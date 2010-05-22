@@ -1,0 +1,5 @@
+Revision history for DBIx-MultiStatementDo
+
+0.01000 2010-05-22 02:55:00 CET
+
+   * Initial release (renamed from DBIx::DoMore).
