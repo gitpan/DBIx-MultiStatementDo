@@ -1,19 +1,36 @@
 package DBIx::MultiStatementDo;
 
-use warnings;
-use strict;
-
 use Moose;
 
-use SQL::Tokenizer 'tokenize_sql';
+use SQL::SplitStatement;
 
-our $VERSION = '0.01000';
+our $VERSION = '0.01001';
 $VERSION = eval $VERSION;
 
 has 'dbh' => (
     is       => 'rw',
     isa      => 'DBI::db',
     required => 1
+);
+
+has 'splitter_options' => (
+    is      => 'rw',
+    isa     => 'Maybe[HashRef[Bool]]',
+    trigger => \&_set_splitter,
+    default => undef
+);
+
+sub _set_splitter {
+     my ($self, $new_options) = @_;
+     $self->_splitter( SQL::SplitStatement->new($new_options) )
+}
+
+has '_splitter' => (
+    is      => 'rw',
+    isa     => 'SQL::SplitStatement',
+    handles => { _split_sql => 'split' },
+    lazy    => 1,
+    default => sub { SQL::SplitStatement->new }
 );
 
 has 'rollback' => (
@@ -25,7 +42,7 @@ has 'rollback' => (
 sub do {
     my ($self, $code) = @_;
     
-    my @statements = $self->split($code);
+    my @statements = $self->_split_sql($code);
     my $dbh = $self->dbh;
     my @results;
 
@@ -63,18 +80,7 @@ sub _do_statements {
 
 sub split {
     my ($self, $code) = @_;
-    
-    my @tokens = tokenize_sql($code);
-    my @statements;
-    my $statement = '';
-    foreach ( @tokens ) {
-        $statement .= $_;
-        next if /^BEGIN$/i .. /^END$/i or $_ ne ';';
-        push @statements, $statement;
-        $statement = ''
-    }
-    push @statements, $statement if $statement =~ /\S+/;
-    return @statements
+    return SQL::SplitStatement->new->split($code)
 }
 
 no Moose;
@@ -90,7 +96,7 @@ DBIx::MultiStatementDo - Multiple SQL statements in a single do() call with any 
 
 =head1 VERSION
 
-Version 0.01000
+Version 0.01001
 
 =head1 SYNOPSIS
 
@@ -129,11 +135,11 @@ with any DBI driver.
 Here is how DBIx::MultiStatementDo works: behind the scenes
 it parses the SQL code, splits it into the atomic statements it is composed
 of and executes them one by one.
-The logic used to split the SQL code is more sophisticated than a raw
-C<split> on the C<;> (semicolon) character,
-so that DBIx::MultiStatementDo is able to correctly handle the presence
-of the semicolon inside identifiers, values or C<BEGIN..END> blocks,
-as shown in the synopsis above.
+To split the SQL code L<SQL::SplitStatement> is used, which employes a more
+sophisticated logic than a raw C<split> on the C<;> (semicolon) character,
+so that it is able to correctly handle the presence of the semicolon
+inside identifiers, values or C<BEGIN..END> blocks
+(even nested blocks), as shown in the synopsis above.
 
 Automatic transactions support is offered by default, so that you'll
 have the I<all-or-nothing> behaviour you would probably expect; if you prefer,
@@ -169,6 +175,19 @@ This option B<is required>.
 A boolean option which enables (when true) or disables (when false)
 automatic transactions. It is set to a true value by default.
 
+=item * C<splitter_options>
+
+This is the options hashref which is passed to
+C<< SQL::SplitStatement->new() >> to build the I<splitter object>, which is then
+internally used by C<DBIx::MultiStatementDo> to split the given SQL code.
+
+It defaults to C<undef>, which is the value that ensures the maximum
+portability across different DBMS. You should therefore not touch this option,
+unless you really know what you are doing.
+
+Please refer to L<< SQL::SplitStatement::new()|SQL::SplitStatement/new >>
+to see the options it takes.
+
 =back
 
 =head2 C<do>
@@ -187,7 +206,7 @@ In list context, it returns a list containing the values returned by the DBI
 C<do> call on each single atomic statement.
 
 If the C<rollback> option has been set (and therefore automatic transactions
-are enabled), in case one of the atomic statements fails, all of the other
+are enabled), in case one of the atomic statements fails, all the other
 succeeding statements executed so far, if any exists, are rolled back and the
 method (immediately) returns an empty list (since no statement has been actually
 committed).
@@ -200,8 +219,8 @@ so far is returned (and these statements are actually committed to the db, if
 C<< $dbh->{AutoCommit} >> is set).
 
 In scalar context it returns, regardless of the value of the C<rollback> option,
-C<undef> if any of the atomic statements fails, or a true value if all
-of the atomic statements succeed.
+C<undef> if any of the atomic statements failed, or a true value if all
+of the atomic statements succeeded.
 
 Note that to activate the automatic transactions you don't have to do anything
 other than setting the C<rollback> option to a true value
@@ -209,7 +228,7 @@ other than setting the C<rollback> option to a true value
 DBIx::MultiStatementDo will automatically (and temporarily, via C<local>) set
 C<< $dbh->{AutoCommit} >> and  C<< $dbh->{RaiseError} >> as needed.
 No other database handle attribute is touched, so that you can for example
-set C<< $dbh->{PrintError} >> and enjoy its effect in case of a failing
+set C<< $dbh->{PrintError} >> and enjoy its effects in case of a failing
 statement.
 
 If you want to disable automatic transactions and manage them by yourself,
@@ -254,6 +273,18 @@ Getter/setter method for the C<rollback> option explained above.
 
 =back
 
+=head2 C<splitter_options>
+
+=over 4
+
+=item * C<< $batch->splitter_options >>
+
+=item * C<< $batch->splitter_options( \%options ) >>
+
+Getter/setter method for the C<splitter_options> option explained above.
+
+=back
+
 =head2 C<split>
 
 =over 4
@@ -262,17 +293,32 @@ Getter/setter method for the C<rollback> option explained above.
 
 =back
 
-This is the method used internally to split the given SQL string into its
-atomic statements.
+B<*WARNING*> - This method is B<DEPRECATED> and B<IT WILL BE REMOVED SOON>!
+If you just want to split your SQL code, please use L<SQL::SplitStatement>
+instead.
 
-It returns a list of strings containing the code of each atomic statement,
-in the same order they appear in the given SQL string.
+This is a class method which splits the given SQL string into
+its atomic statements. Note that it is not the (instance) method used
+internally by DBIx::MultiStatementDo to split the SQL code, but a class
+method exposed here just for convenience.
 
-You shouldn't care about it, unless you want to bypass all the other
+It does that by simply calling:
+
+    SQL::SplitStatement->new->split($sql_string)
+
+It therefore returns a list of strings containing the code of each atomic
+statement, in the same order they appear in the given SQL string.
+
+Note that C<< SQL::SplitStatement->new() >> is called with its default
+options, and that tha value of C<splitter_options> has no effect on it.
+
+You shouldn't use it, unless you want to bypass all the other
 functionality offered by this module and do it by yourself, in which case
-you can use it as a class method, like this:
+you can use it like this:
 
     $dbh->do($_) foreach DBIx::MultiStatementDo->split( $sql_string );
+
+(but, again, to do this it is better to directly use L<SQL::SplitStatement>).
 
 =head1 DEPENDENCIES
 
@@ -280,7 +326,7 @@ DBIx::MultiStatementDo depends on the following modules:
 
 =over 4
 
-=item * L<SQL::Tokenizer>
+=item * L<SQL::SplitStatement>
 
 =item * L<Moose>
 
@@ -328,12 +374,14 @@ L<http://search.cpan.org/dist/DBIx-MultiStatementDo/>
 
 =head1 ACKNOWLEDGEMENTS
 
-Igor Sutton for his excellent L<SQL::Tokenizer>, which made writing
-this module a joke.
+Matt S Trout, for having suggested a much more suitable name
+for this module.
 
 =head1 SEE ALSO
 
 =over 4
+
+=item * L<SQL::SplitStatement>
 
 =item * L<DBI>
 

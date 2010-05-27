@@ -3,7 +3,7 @@ NAME
     with any DBI driver
 
 VERSION
-    Version 0.01000
+    Version 0.01001
 
 SYNOPSIS
         use DBI;
@@ -38,11 +38,11 @@ DESCRIPTION
 
     Here is how DBIx::MultiStatementDo works: behind the scenes it parses
     the SQL code, splits it into the atomic statements it is composed of and
-    executes them one by one. The logic used to split the SQL code is more
-    sophisticated than a raw "split" on the ";" (semicolon) character, so
-    that DBIx::MultiStatementDo is able to correctly handle the presence of
-    the semicolon inside identifiers, values or "BEGIN..END" blocks, as
-    shown in the synopsis above.
+    executes them one by one. To split the SQL code SQL::SplitStatement is
+    used, which employes a more sophisticated logic than a raw "split" on
+    the ";" (semicolon) character, so that it is able to correctly handle
+    the presence of the semicolon inside identifiers, values or "BEGIN..END"
+    blocks (even nested blocks), as shown in the synopsis above.
 
     Automatic transactions support is offered by default, so that you'll
     have the *all-or-nothing* behaviour you would probably expect; if you
@@ -69,6 +69,20 @@ METHODS
         A boolean option which enables (when true) or disables (when false)
         automatic transactions. It is set to a true value by default.
 
+    *   "splitter_options"
+
+        This is the options hashref which is passed to
+        "SQL::SplitStatement->new()" to build the *splitter object*, which
+        is then internally used by "DBIx::MultiStatementDo" to split the
+        given SQL code.
+
+        It defaults to "undef", which is the value that ensures the maximum
+        portability across different DBMS. You should therefore not touch
+        this option, unless you really know what you are doing.
+
+        Please refer to SQL::SplitStatement::new() to see the options it
+        takes.
+
   "do"
     *   "$batch->do( $sql_string )"
 
@@ -82,9 +96,9 @@ METHODS
 
     If the "rollback" option has been set (and therefore automatic
     transactions are enabled), in case one of the atomic statements fails,
-    all of the other succeeding statements executed so far, if any exists,
-    are rolled back and the method (immediately) returns an empty list
-    (since no statement has been actually committed).
+    all the other succeeding statements executed so far, if any exists, are
+    rolled back and the method (immediately) returns an empty list (since no
+    statement has been actually committed).
 
     If the "rollback" option is set to a false value (and therefore
     automatic transactions are disabled), the method immediately returns at
@@ -95,8 +109,8 @@ METHODS
     set).
 
     In scalar context it returns, regardless of the value of the "rollback"
-    option, "undef" if any of the atomic statements fails, or a true value
-    if all of the atomic statements succeed.
+    option, "undef" if any of the atomic statements failed, or a true value
+    if all of the atomic statements succeeded.
 
     Note that to activate the automatic transactions you don't have to do
     anything other than setting the "rollback" option to a true value (or
@@ -104,7 +118,7 @@ METHODS
     automatically (and temporarily, via "local") set "$dbh->{AutoCommit}"
     and "$dbh->{RaiseError}" as needed. No other database handle attribute
     is touched, so that you can for example set "$dbh->{PrintError}" and
-    enjoy its effect in case of a failing statement.
+    enjoy its effects in case of a failing statement.
 
     If you want to disable automatic transactions and manage them by
     yourself, you can do something along this:
@@ -138,25 +152,49 @@ METHODS
 
         Getter/setter method for the "rollback" option explained above.
 
+  "splitter_options"
+    *   "$batch->splitter_options"
+
+    *   "$batch->splitter_options( \%options )"
+
+        Getter/setter method for the "splitter_options" option explained
+        above.
+
   "split"
     *   "DBIx::MultiStatementDo->split( $sql_string )"
 
-    This is the method used internally to split the given SQL string into
-    its atomic statements.
+    *WARNING* - This method is DEPRECATED and IT WILL BE REMOVED SOON! If
+    you just want to split your SQL code, please use SQL::SplitStatement
+    instead.
 
-    It returns a list of strings containing the code of each atomic
-    statement, in the same order they appear in the given SQL string.
+    This is a class method which splits the given SQL string into its atomic
+    statements. Note that it is not the (instance) method used internally by
+    DBIx::MultiStatementDo to split the SQL code, but a class method exposed
+    here just for convenience.
 
-    You shouldn't care about it, unless you want to bypass all the other
+    It does that by simply calling:
+
+        SQL::SplitStatement->new->split($sql_string)
+
+    It therefore returns a list of strings containing the code of each
+    atomic statement, in the same order they appear in the given SQL string.
+
+    Note that "SQL::SplitStatement->new()" is called with its default
+    options, and that tha value of "splitter_options" has no effect on it.
+
+    You shouldn't use it, unless you want to bypass all the other
     functionality offered by this module and do it by yourself, in which
-    case you can use it as a class method, like this:
+    case you can use it like this:
 
         $dbh->do($_) foreach DBIx::MultiStatementDo->split( $sql_string );
+
+    (but, again, to do this it is better to directly use
+    SQL::SplitStatement).
 
 DEPENDENCIES
     DBIx::MultiStatementDo depends on the following modules:
 
-    *   SQL::Tokenizer
+    *   SQL::SplitStatement
 
     *   Moose
 
@@ -194,10 +232,12 @@ SUPPORT
         <http://search.cpan.org/dist/DBIx-MultiStatementDo/>
 
 ACKNOWLEDGEMENTS
-    Igor Sutton for his excellent SQL::Tokenizer, which made writing this
-    module a joke.
+    Matt S Trout, for having suggested a much more suitable name for this
+    module.
 
 SEE ALSO
+    *   SQL::SplitStatement
+
     *   DBI
 
 LICENSE AND COPYRIGHT

@@ -6,7 +6,7 @@ use warnings;
 use DBI;
 use DBIx::MultiStatementDo;
 
-use Test::More tests => 4;
+use Test::More tests => 3;
 
 my $sql = <<'SQL';
 CREATE TABLE child( x, y, "w;", "z;z", FOREIGN KEY (x, y) REFERENCES parent (a,b) );
@@ -15,36 +15,35 @@ CREATE TRIGGER genfkey1_delete_referenced BEFORE DELETE ON "parent" WHEN
     EXISTS (SELECT 1 FROM "child" WHERE old."a" == "x" AND old."b" == "y")
 BEGIN
   SELECT RAISE(ABORT, 'constraint failed');
-END;
+END
 SQL
-
-chomp( my $clean_sql = $sql );
 
 my @statements = DBIx::MultiStatementDo->split($sql);
 
-ok (
-    @statements == 3,
+cmp_ok (
+    @statements, '==', 3,
     'correct number of statements - class method'
 );
 
-ok (
-    join('', @statements) eq $clean_sql,
-    'code successfully rebuilt - class method'
+my $dbh = DBI->connect( 'dbi:SQLite:dbname=:memory:', '', '');
+
+my $sql_splitter = DBIx::MultiStatementDo->new(
+    dbh => $dbh,
+    splitter_options => {
+        keep_semicolon        => 1,
+        keep_extra_spaces     => 1,
+        keep_empty_statements => 1
+    }
 );
 
-my $dbh = DBI->connect( 'dbi:SQLite:dbname=:memory:', '', '');
-my $splitter = DBIx::MultiStatementDo->new(dbh => $dbh);
+@statements = $sql_splitter->_split_sql($sql);
 
-@statements = $splitter->split($sql);
-
-ok (
-    @statements == 3,
+cmp_ok (
+    scalar(@statements), '==', 3,
     'correct number of statements - instance method'
 );
 
-$sql =~ s/\s+$//; # Remove trailing spaces;
-
-ok (
-    join('', @statements) eq $clean_sql,
+is (
+    join('', @statements), $sql,
     'code successfully rebuilt - instance method'
 );

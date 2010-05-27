@@ -27,7 +27,7 @@ my $dbh = DBI->connect( 'dbi:SQLite:dbname=:memory:', '', '', {
     PrintError => 0
 });
 
-my $do_more = DBIx::MultiStatementDo->new(
+my $batch = DBIx::MultiStatementDo->new(
     dbh      => $dbh,
     rollback => 0
 );
@@ -35,22 +35,22 @@ my $do_more = DBIx::MultiStatementDo->new(
 my @results;
 my $result;
 
-ok ( @results = $do_more->do($create), 'multiple create on sqlite' );
-ok ( @results == 3                   , 'check success'             );
+ok ( @results = $batch->do($create), 'multiple create on sqlite' );
+cmp_ok ( scalar(@results), '==', 3, 'check success' );
 
 @results = ();
 my $rollback_done;
 
-$do_more->dbh->{AutoCommit} = 0;
-$do_more->dbh->{RaiseError} = 1;
+$batch->dbh->{AutoCommit} = 0;
+$batch->dbh->{RaiseError} = 1;
 eval {
-    @results = $do_more->do( $insert_bad );
-    $do_more->dbh->commit;
+    @results = $batch->do( $insert_bad );
+    $batch->dbh->commit;
     1
 } or do {
-    eval { $do_more->dbh->rollback };
+    eval { $batch->dbh->rollback };
     $rollback_done = 1
 };
 
-ok ( @results == 0, 'check failure' );
+cmp_ok ( scalar(@results), '==', 0, 'check failure' );
 ok ( $rollback_done, 'check rollback' );

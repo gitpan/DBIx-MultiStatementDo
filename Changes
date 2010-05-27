@@ -1,5 +1,15 @@
 Revision history for DBIx-MultiStatementDo
 
+0.01001 2010-05-27 08:20:00 CET
+
+ * Removed "use strict" and "use warnings" from MultiStatementDo.pm, as Moose
+   already activates them.
+
+ * The splitting functionality has been extracted and put in a standalone
+   module (SQL::SplitStatement).
+   * Tests and POD modified accordingly.
+   * Starting of deprecation cycle of DBIx-MultiStatementDo->split.
+
 0.01000 2010-05-22 02:55:00 CET
 
-   * Initial release (renamed from DBIx::DoMore).
+ * Initial release (renamed from DBIx-DoMore).

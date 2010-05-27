@@ -45,25 +45,25 @@ my $dbh = DBI->connect( 'dbi:SQLite:dbname=:memory:', '', '', {
     PrintError => 0
 });
 
-my $do_more = DBIx::MultiStatementDo->new( dbh => $dbh );
+my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
 
 my @results;
 my $result;
 
-ok ( @results = $do_more->do($create), 'multiple create on sqlite' );
-ok ( @results == 3                   , 'check success'             );
+ok ( @results = $batch->do($create), 'multiple create on sqlite' );
+cmp_ok ( scalar(@results), '==', 3, 'check success' );
 
-ok ( @results = $do_more->do($insert_correct), 'multiple correct INSERTs on sqlite' );
-ok ( @results == 4                           , 'check success'                      );
+ok ( @results = $batch->do($insert_correct), 'multiple correct INSERTs on sqlite' );
+cmp_ok ( scalar(@results), '==', 4, 'check success' );
 
-@results = $do_more->do($insert_bad);
-ok ( @results == 0, 'check failure' );
+@results = $batch->do($insert_bad);
+cmp_ok ( scalar(@results), '==', 0, 'check failure' );
 
-$result = $do_more->do($insert_bad2);
+$result = $batch->do($insert_bad2);
 ok ( ! $result, 'multiple mixed INSERTs, check failure in scalar context' );
 
-ok ( @results = $do_more->do($drop), 'multiple drop on sqlite' );
-ok ( @results == 3                 , 'check success'           );
+ok ( @results = $batch->do($drop), 'multiple drop on sqlite' );
+cmp_ok ( scalar(@results), '==', 3, 'check success' );
 
-ok ( $do_more->dbh->{AutoCommit}  , '$dbh->{AutoCommit} restored' );
-ok ( ! $do_more->dbh->{RaiseError}, '$dbh->{RaiseError} restored' );
+ok ( $batch->dbh->{AutoCommit}  , '$dbh->{AutoCommit} restored' );
+ok ( ! $batch->dbh->{RaiseError}, '$dbh->{RaiseError} restored' );

@@ -19,10 +19,10 @@ SQL
 
 my $dbh = DBI->connect( 'dbi:SQLite:dbname=:memory:', '', '' );
 
-my $do_more = DBIx::MultiStatementDo->new( dbh => $dbh );
+my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
 
 # Multiple SQL statements in a single call
-my @results = $do_more->do($create);
+my @results = $batch->do($create);
 
 #diag scalar(@results) . ' statements successfully executed';
 ok ( @results == 4, 'check success' );
