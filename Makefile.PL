@@ -14,7 +14,7 @@ author        q{Emanuele Zeppieri <emazep@cpan.org>};
 license       'perl';
 
 requires 'Moose';
-requires 'SQL::SplitStatement';
+requires 'SQL::SplitStatement' => '0.01001';
 
 test_requires 'DBD::SQLite';
 test_requires 'DBI';

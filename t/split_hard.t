@@ -10,11 +10,12 @@ use Test::More tests => 3;
 
 my $sql = <<'SQL';
 CREATE TABLE child( x, y, "w;", "z;z", FOREIGN KEY (x, y) REFERENCES parent (a,b) );
+-- SQL; comment;
 CREATE TABLE parent( a, b, c, d, PRIMARY KEY(a, b) );
 CREATE TRIGGER genfkey1_delete_referenced BEFORE DELETE ON "parent" WHEN
     EXISTS (SELECT 1 FROM "child" WHERE old."a" == "x" AND old."b" == "y")
 BEGIN
-  SELECT RAISE(ABORT, 'constraint failed');
+  SELECT RAISE(ABORT, 'constraint failed'); -- Inlined comment
 END
 SQL
 
@@ -32,6 +33,7 @@ my $sql_splitter = DBIx::MultiStatementDo->new(
     splitter_options => {
         keep_semicolon        => 1,
         keep_extra_spaces     => 1,
+        keep_comments         => 1,
         keep_empty_statements => 1
     }
 );

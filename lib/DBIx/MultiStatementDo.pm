@@ -4,7 +4,7 @@ use Moose;
 
 use SQL::SplitStatement;
 
-our $VERSION = '0.01001';
+our $VERSION = '0.01002';
 $VERSION = eval $VERSION;
 
 has 'dbh' => (
@@ -96,22 +96,24 @@ DBIx::MultiStatementDo - Multiple SQL statements in a single do() call with any 
 
 =head1 VERSION
 
-Version 0.01001
+Version 0.01002
 
 =head1 SYNOPSIS
 
     use DBI;
     use DBIx::MultiStatementDo;
     
-    my $create = <<'SQL';
+    my $sql_code = <<'SQL';
     CREATE TABLE parent(a, b, c   , d    );
     CREATE TABLE child (x, y, "w;", "z;z");
+    /* C-style comment; */
     CREATE TRIGGER "check;delete;parent;" BEFORE DELETE ON parent WHEN
         EXISTS (SELECT 1 FROM child WHERE old.a = x AND old.b = y)
     BEGIN
-        SELECT RAISE(ABORT, 'constraint failed;');
+        SELECT RAISE(ABORT, 'constraint failed;'); -- Inlined SQL comment
     END;
-    INSERT INTO parent (a, b, c, d) VALUES ('pippo;', 'pluto;', NULL, NULL)
+    -- Standalone SQL; comment; w/ semicolons;
+    INSERT INTO parent (a, b, c, d) VALUES ('pippo;', 'pluto;', NULL, NULL);
     SQL
     
     my $dbh = DBI->connect( 'dbi:SQLite:dbname=my.db', '', '' );
@@ -119,7 +121,7 @@ Version 0.01001
     my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
     
     # Multiple SQL statements in a single call
-    my @results = $batch->do( $create );
+    my @results = $batch->do( $sql_code );
     
     print scalar(@results) . ' statements successfully executed!';
     # 4 statements successfully executed!
@@ -138,7 +140,7 @@ of and executes them one by one.
 To split the SQL code L<SQL::SplitStatement> is used, which employes a more
 sophisticated logic than a raw C<split> on the C<;> (semicolon) character,
 so that it is able to correctly handle the presence of the semicolon
-inside identifiers, values or C<BEGIN..END> blocks
+inside identifiers, values, comments or C<BEGIN..END> blocks
 (even nested blocks), as shown in the synopsis above.
 
 Automatic transactions support is offered by default, so that you'll
@@ -172,7 +174,7 @@ This option B<is required>.
 
 =item * C<rollback>
 
-A boolean option which enables (when true) or disables (when false)
+A Boolean option which enables (when true) or disables (when false)
 automatic transactions. It is set to a true value by default.
 
 =item * C<splitter_options>
@@ -326,7 +328,7 @@ DBIx::MultiStatementDo depends on the following modules:
 
 =over 4
 
-=item * L<SQL::SplitStatement>
+=item * L<SQL::SplitStatement> 0.01001 or newer
 
 =item * L<Moose>
 

@@ -3,21 +3,23 @@ NAME
     with any DBI driver
 
 VERSION
-    Version 0.01001
+    Version 0.01002
 
 SYNOPSIS
         use DBI;
         use DBIx::MultiStatementDo;
     
-        my $create = <<'SQL';
+        my $sql_code = <<'SQL';
         CREATE TABLE parent(a, b, c   , d    );
         CREATE TABLE child (x, y, "w;", "z;z");
+        /* C-style comment; */
         CREATE TRIGGER "check;delete;parent;" BEFORE DELETE ON parent WHEN
             EXISTS (SELECT 1 FROM child WHERE old.a = x AND old.b = y)
         BEGIN
-            SELECT RAISE(ABORT, 'constraint failed;');
+            SELECT RAISE(ABORT, 'constraint failed;'); -- Inlined SQL comment
         END;
-        INSERT INTO parent (a, b, c, d) VALUES ('pippo;', 'pluto;', NULL, NULL)
+        -- Standalone SQL; comment; w/ semicolons;
+        INSERT INTO parent (a, b, c, d) VALUES ('pippo;', 'pluto;', NULL, NULL);
         SQL
     
         my $dbh = DBI->connect( 'dbi:SQLite:dbname=my.db', '', '' );
@@ -25,7 +27,7 @@ SYNOPSIS
         my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
     
         # Multiple SQL statements in a single call
-        my @results = $batch->do( $create );
+        my @results = $batch->do( $sql_code );
     
         print scalar(@results) . ' statements successfully executed!';
         # 4 statements successfully executed!
@@ -41,8 +43,9 @@ DESCRIPTION
     executes them one by one. To split the SQL code SQL::SplitStatement is
     used, which employes a more sophisticated logic than a raw "split" on
     the ";" (semicolon) character, so that it is able to correctly handle
-    the presence of the semicolon inside identifiers, values or "BEGIN..END"
-    blocks (even nested blocks), as shown in the synopsis above.
+    the presence of the semicolon inside identifiers, values, comments or
+    "BEGIN..END" blocks (even nested blocks), as shown in the synopsis
+    above.
 
     Automatic transactions support is offered by default, so that you'll
     have the *all-or-nothing* behaviour you would probably expect; if you
@@ -66,7 +69,7 @@ METHODS
 
     *   "rollback"
 
-        A boolean option which enables (when true) or disables (when false)
+        A Boolean option which enables (when true) or disables (when false)
         automatic transactions. It is set to a true value by default.
 
     *   "splitter_options"
@@ -194,7 +197,7 @@ METHODS
 DEPENDENCIES
     DBIx::MultiStatementDo depends on the following modules:
 
-    *   SQL::SplitStatement
+    *   SQL::SplitStatement 0.01001 or newer
 
     *   Moose
 
