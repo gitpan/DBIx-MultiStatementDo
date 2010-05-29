@@ -3,14 +3,14 @@ NAME
     with any DBI driver
 
 VERSION
-    Version 0.01002
+    Version 0.02000
 
 SYNOPSIS
         use DBI;
         use DBIx::MultiStatementDo;
     
         my $sql_code = <<'SQL';
-        CREATE TABLE parent(a, b, c   , d    );
+        CREATE TABLE parent (a, b, c   , d    );
         CREATE TABLE child (x, y, "w;", "z;z");
         /* C-style comment; */
         CREATE TRIGGER "check;delete;parent;" BEFORE DELETE ON parent WHEN
@@ -27,7 +27,8 @@ SYNOPSIS
         my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
     
         # Multiple SQL statements in a single call
-        my @results = $batch->do( $sql_code );
+        my @results = $batch->do( $sql_code )
+            or die $batch->dbh->errstr;
     
         print scalar(@results) . ' statements successfully executed!';
         # 4 statements successfully executed!
@@ -89,13 +90,56 @@ METHODS
   "do"
     *   "$batch->do( $sql_string )"
 
+    *   "$batch->do( $sql_string, \%attr )"
+
+    *   "$batch->do( $sql_string, \%attr, \@bind_values )"
+
     This is the method which actually executes the SQL statements against
     your db. It takes a string containing one or more SQL statements and
     executes them one by one, in the same order they appear in the given SQL
     string.
 
-    In list context, it returns a list containing the values returned by the
-    DBI "do" call on each single atomic statement.
+    Analogously to DBI's "do()", it optionally also takes an hashref of
+    attributes (which is passed unaltered to "$batch->dbh->do()" for each
+    atomic statement), and a reference to a list of list refs, each of which
+    contains the bind values for the atomic statement it corresponds to. The
+    bind values inner lists must match the corresponding atomic statements
+    as returned by the internal *splitter object*, with "undef" (or empty
+    listref) elements where the corresponding atomic statements have no bind
+    values. Here is an example:
+
+        # 7 statements (SQLite valid SQL)
+        my $sql_code = <<'SQL';
+        CREATE TABLE state (id, name);
+        INSERT INTO  state (id, name) VALUES (?, ?);
+        CREATE TABLE city (id, name, state_id);
+        INSERT INTO  city (id, name, state_id) VALUES (?, ?, ?);
+        INSERT INTO  city (id, name, state_id) VALUES (?, ?, ?);
+        DROP TABLE city;
+        DROP TABLE state
+        SQL
+    
+        # Only 5 elements are required in @bind_values
+        my @bind_values = (
+            undef                  ,
+            [ 1, 'Nevada' ]        ,
+            undef                  ,
+            [ 1, 'Las Vegas'  , 1 ],
+            [ 2, 'Carson City', 1 ]
+        );
+    
+        my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
+    
+        my @results = $batch->do( $sql_code, undef, \@bind_values )
+            or die $batch->dbh->errstr;
+
+    If the last statements have no bind values, the corresponding "undef"s
+    don't need to be present in @bind_values, as shown above. @bind_values
+    can also have more elements than the number of the atomic statements, in
+    which case the excess elements are simply ignored.
+
+    In list context, "do" returns a list containing the values returned by
+    the "$batch->dbh->do()" call on each single atomic statement.
 
     If the "rollback" option has been set (and therefore automatic
     transactions are enabled), in case one of the atomic statements fails,
@@ -123,7 +167,7 @@ METHODS
     is touched, so that you can for example set "$dbh->{PrintError}" and
     enjoy its effects in case of a failing statement.
 
-    If you want to disable automatic transactions and manage them by
+    If you want to disable the automatic transactions and manage them by
     yourself, you can do something along this:
 
         my $batch = DBIx::MultiStatementDo->new(

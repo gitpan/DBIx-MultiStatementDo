@@ -4,7 +4,7 @@ use Moose;
 
 use SQL::SplitStatement;
 
-our $VERSION = '0.01002';
+our $VERSION = '0.02000';
 $VERSION = eval $VERSION;
 
 has 'dbh' => (
@@ -40,7 +40,7 @@ has 'rollback' => (
 );
 
 sub do {
-    my ($self, $code) = @_;
+    my ($self, $code, $attr, $bind_values) = @_;
     
     my @statements = $self->_split_sql($code);
     my $dbh = $self->dbh;
@@ -50,12 +50,13 @@ sub do {
         local $dbh->{AutoCommit} = 0;
         local $dbh->{RaiseError} = 1;
         eval {
-            @results = $self->_do_statements(\@statements);
+            @results
+                = $self->_do_statements( \@statements, $attr, $bind_values );
             $dbh->commit;
             1
         } or eval { $dbh->rollback }
     } else {
-        @results = $self->_do_statements(\@statements)
+        @results = $self->_do_statements( \@statements, $attr, $bind_values )
     }
     
     return @results if wantarray;
@@ -66,11 +67,20 @@ sub do {
 }
 
 sub _do_statements {
-    my ($self, $statements) = @_;
+    my ($self, $statements, $attr, $bind_values) = @_;
     
+    $bind_values ||= [];
     my @results;
+    my $statement_index = 0;
+    my $dbh = $self->dbh;
+
     for my $statement ( @{ $statements } ) {
-        my $result = $self->dbh->do($statement);
+        my $statement_bind_values = $bind_values->[$statement_index++];
+        my $result = $dbh->do(
+            $statement,
+            $attr,
+            defined $statement_bind_values ? @{ $statement_bind_values } : ()
+        );
         last unless $result;
         push @results, $result
     }
@@ -96,7 +106,7 @@ DBIx::MultiStatementDo - Multiple SQL statements in a single do() call with any 
 
 =head1 VERSION
 
-Version 0.01002
+Version 0.02000
 
 =head1 SYNOPSIS
 
@@ -104,7 +114,7 @@ Version 0.01002
     use DBIx::MultiStatementDo;
     
     my $sql_code = <<'SQL';
-    CREATE TABLE parent(a, b, c   , d    );
+    CREATE TABLE parent (a, b, c   , d    );
     CREATE TABLE child (x, y, "w;", "z;z");
     /* C-style comment; */
     CREATE TRIGGER "check;delete;parent;" BEFORE DELETE ON parent WHEN
@@ -121,7 +131,8 @@ Version 0.01002
     my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
     
     # Multiple SQL statements in a single call
-    my @results = $batch->do( $sql_code );
+    my @results = $batch->do( $sql_code )
+        or die $batch->dbh->errstr;
     
     print scalar(@results) . ' statements successfully executed!';
     # 4 statements successfully executed!
@@ -198,14 +209,58 @@ to see the options it takes.
 
 =item * C<< $batch->do( $sql_string ) >>
 
+=item * C<< $batch->do( $sql_string, \%attr ) >>
+
+=item * C<< $batch->do( $sql_string, \%attr, \@bind_values ) >>
+
 =back
 
 This is the method which actually executes the SQL statements against your db.
 It takes a string containing one or more SQL statements and executes them
 one by one, in the same order they appear in the given SQL string.
 
-In list context, it returns a list containing the values returned by the DBI
-C<do> call on each single atomic statement.
+Analogously to DBI's C<do()>, it optionally also takes an hashref of attributes
+(which is passed unaltered to C<< $batch->dbh->do() >>
+for each atomic statement), and a reference to a list
+of list refs, each of which contains the bind values for the atomic
+statement it corresponds to.
+The bind values inner lists must match the corresponding atomic statements
+as returned by the internal I<splitter object>,
+with C<undef> (or empty listref) elements where the corresponding atomic
+statements have no bind values. Here is an example:
+
+    # 7 statements (SQLite valid SQL)
+    my $sql_code = <<'SQL';
+    CREATE TABLE state (id, name);
+    INSERT INTO  state (id, name) VALUES (?, ?);
+    CREATE TABLE city (id, name, state_id);
+    INSERT INTO  city (id, name, state_id) VALUES (?, ?, ?);
+    INSERT INTO  city (id, name, state_id) VALUES (?, ?, ?);
+    DROP TABLE city;
+    DROP TABLE state
+    SQL
+    
+    # Only 5 elements are required in @bind_values
+    my @bind_values = (
+        undef                  ,
+        [ 1, 'Nevada' ]        ,
+        undef                  ,
+        [ 1, 'Las Vegas'  , 1 ],
+        [ 2, 'Carson City', 1 ]
+    );
+    
+    my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
+    
+    my @results = $batch->do( $sql_code, undef, \@bind_values )
+        or die $batch->dbh->errstr;
+
+If the last statements have no bind values, the corresponding C<undef>s
+don't need to be present in C<@bind_values>, as shown above.
+C<@bind_values> can also have more elements than the number of the atomic
+statements, in which case the excess elements are simply ignored.
+
+In list context, C<do> returns a list containing the values returned by the
+C<< $batch->dbh->do() >> call on each single atomic statement.
 
 If the C<rollback> option has been set (and therefore automatic transactions
 are enabled), in case one of the atomic statements fails, all the other
@@ -233,7 +288,7 @@ No other database handle attribute is touched, so that you can for example
 set C<< $dbh->{PrintError} >> and enjoy its effects in case of a failing
 statement.
 
-If you want to disable automatic transactions and manage them by yourself,
+If you want to disable the automatic transactions and manage them by yourself,
 you can do something along this:
 
     my $batch = DBIx::MultiStatementDo->new(

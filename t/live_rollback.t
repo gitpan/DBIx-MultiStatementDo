@@ -6,7 +6,7 @@ use warnings;
 use DBI;
 use DBIx::MultiStatementDo;
 
-use Test::More tests => 10;
+use Test::More tests => 11;
 
 my $create = <<'SQL';
 CREATE TABLE parent( a, b, c, d, PRIMARY KEY(a, b) );
@@ -53,7 +53,10 @@ my $result;
 ok ( @results = $batch->do($create), 'multiple create on sqlite' );
 cmp_ok ( scalar(@results), '==', 3, 'check success' );
 
-ok ( @results = $batch->do($insert_correct), 'multiple correct INSERTs on sqlite' );
+ok (
+    @results = $batch->do($insert_correct),
+    'multiple correct INSERTs on sqlite'
+);
 cmp_ok ( scalar(@results), '==', 4, 'check success' );
 
 @results = $batch->do($insert_bad);
@@ -62,8 +65,11 @@ cmp_ok ( scalar(@results), '==', 0, 'check failure' );
 $result = $batch->do($insert_bad2);
 ok ( ! $result, 'multiple mixed INSERTs, check failure in scalar context' );
 
+@results = $batch->do($insert_bad2);
+ok ( ! @results, 'multiple mixed INSERTs, check failure in list context' );
+
 ok ( @results = $batch->do($drop), 'multiple drop on sqlite' );
 cmp_ok ( scalar(@results), '==', 3, 'check success' );
 
-ok ( $batch->dbh->{AutoCommit}  , '$dbh->{AutoCommit} restored' );
-ok ( ! $batch->dbh->{RaiseError}, '$dbh->{RaiseError} restored' );
+ok ( $batch->dbh->{AutoCommit}  , '$dbh->{AutoCommit} automatically restored' );
+ok ( ! $batch->dbh->{RaiseError}, '$dbh->{RaiseError} automatically restored' );
