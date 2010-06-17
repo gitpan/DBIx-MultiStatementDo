@@ -16,7 +16,9 @@ MANIFEST			This list of files
 META.yml
 README
 t/00-load.t
-t/bind_values.t
+t/bind_values_flat.t
+t/bind_values_ref.t
+t/do_firstarg_as_list.t
 t/live_manual_rollback.t
 t/live_no_rollback.t
 t/live_rollback.t

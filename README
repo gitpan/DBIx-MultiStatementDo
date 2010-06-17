@@ -3,12 +3,12 @@ NAME
     with any DBI driver
 
 VERSION
-    Version 0.02000
+    Version 0.05000
 
 SYNOPSIS
         use DBI;
         use DBIx::MultiStatementDo;
-    
+
         my $sql_code = <<'SQL';
         CREATE TABLE parent (a, b, c   , d    );
         CREATE TABLE child (x, y, "w;", "z;z");
@@ -21,15 +21,15 @@ SYNOPSIS
         -- Standalone SQL; comment; w/ semicolons;
         INSERT INTO parent (a, b, c, d) VALUES ('pippo;', 'pluto;', NULL, NULL);
         SQL
-    
+
         my $dbh = DBI->connect( 'dbi:SQLite:dbname=my.db', '', '' );
-    
+
         my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
-    
+
         # Multiple SQL statements in a single call
         my @results = $batch->do( $sql_code )
             or die $batch->dbh->errstr;
-    
+
         print scalar(@results) . ' statements successfully executed!';
         # 4 statements successfully executed!
 
@@ -42,11 +42,11 @@ DESCRIPTION
     Here is how DBIx::MultiStatementDo works: behind the scenes it parses
     the SQL code, splits it into the atomic statements it is composed of and
     executes them one by one. To split the SQL code SQL::SplitStatement is
-    used, which employes a more sophisticated logic than a raw "split" on
-    the ";" (semicolon) character, so that it is able to correctly handle
-    the presence of the semicolon inside identifiers, values, comments or
-    "BEGIN..END" blocks (even nested blocks), as shown in the synopsis
-    above.
+    used, which uses a more sophisticated logic than a raw "split" on the
+    *statement terminator token*, so that it is able to correctly handle the
+    presence of said token inside identifiers, values, comments, "BEGIN ...
+    END" blocks (even nested) and procedural code, as (partially)
+    exemplified in the synopsis above.
 
     Automatic transactions support is offered by default, so that you'll
     have the *all-or-nothing* behaviour you would probably expect; if you
@@ -75,76 +75,51 @@ METHODS
 
     *   "splitter_options"
 
-        This is the options hashref which is passed to
+        This is the options hashref which is passed unaltered to
         "SQL::SplitStatement->new()" to build the *splitter object*, which
-        is then internally used by "DBIx::MultiStatementDo" to split the
-        given SQL code.
+        is then internally used by DBIx::MultiStatementDo to split the given
+        SQL string.
 
-        It defaults to "undef", which is the value that ensures the maximum
-        portability across different DBMS. You should therefore not touch
-        this option, unless you really know what you are doing.
+        It defaults to "undef", which should be the best value if the given
+        SQL string contains only standard SQL. If it contains contains also
+        procedural code, you may need to fine tune this option.
 
         Please refer to SQL::SplitStatement::new() to see the options it
         takes.
 
   "do"
-    *   "$batch->do( $sql_string )"
+    *   "$batch->do( $sql_string | \@sql_statements )"
 
-    *   "$batch->do( $sql_string, \%attr )"
+    *   "$batch->do( $sql_string | \@sql_statements , \%attr )"
 
-    *   "$batch->do( $sql_string, \%attr, \@bind_values )"
+    *   "$batch->do( $sql_string | \@sql_statements , \%attr, \@bind_values
+        | @bind_values )"
 
     This is the method which actually executes the SQL statements against
-    your db. It takes a string containing one or more SQL statements and
-    executes them one by one, in the same order they appear in the given SQL
-    string.
+    your db. As its first (mandatory) argument, it takes an SQL string
+    containing one or more SQL statements. The SQL string is split into its
+    atomic statements, which are then executed one-by-one, in the same order
+    they appear in the given string.
+
+    The first argument can also be a reference to a list of (already split)
+    statements, in which case no split is performed and the statements are
+    executed as they appear in the list. The list can also be a two-elements
+    list, where the first element is the statements listref as above, and
+    the second is the *placeholder numbers* listref, exactly as returned by
+    the SQL::SplitStatement::split_with_placeholders() method.
 
     Analogously to DBI's "do()", it optionally also takes an hashref of
     attributes (which is passed unaltered to "$batch->dbh->do()" for each
-    atomic statement), and a reference to a list of list refs, each of which
-    contains the bind values for the atomic statement it corresponds to. The
-    bind values inner lists must match the corresponding atomic statements
-    as returned by the internal *splitter object*, with "undef" (or empty
-    listref) elements where the corresponding atomic statements have no bind
-    values. Here is an example:
-
-        # 7 statements (SQLite valid SQL)
-        my $sql_code = <<'SQL';
-        CREATE TABLE state (id, name);
-        INSERT INTO  state (id, name) VALUES (?, ?);
-        CREATE TABLE city (id, name, state_id);
-        INSERT INTO  city (id, name, state_id) VALUES (?, ?, ?);
-        INSERT INTO  city (id, name, state_id) VALUES (?, ?, ?);
-        DROP TABLE city;
-        DROP TABLE state
-        SQL
-    
-        # Only 5 elements are required in @bind_values
-        my @bind_values = (
-            undef                  ,
-            [ 1, 'Nevada' ]        ,
-            undef                  ,
-            [ 1, 'Las Vegas'  , 1 ],
-            [ 2, 'Carson City', 1 ]
-        );
-    
-        my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
-    
-        my @results = $batch->do( $sql_code, undef, \@bind_values )
-            or die $batch->dbh->errstr;
-
-    If the last statements have no bind values, the corresponding "undef"s
-    don't need to be present in @bind_values, as shown above. @bind_values
-    can also have more elements than the number of the atomic statements, in
-    which case the excess elements are simply ignored.
+    atomic statement), and the *bind values*, either as a listref or a flat
+    list (see below for the difference).
 
     In list context, "do" returns a list containing the values returned by
     the "$batch->dbh->do()" call on each single atomic statement.
 
     If the "rollback" option has been set (and therefore automatic
     transactions are enabled), in case one of the atomic statements fails,
-    all the other succeeding statements executed so far, if any exists, are
-    rolled back and the method (immediately) returns an empty list (since no
+    all the other succeeding statements executed so far, if any, are rolled
+    back and the method (immediately) returns an empty list (since no
     statement has been actually committed).
 
     If the "rollback" option is set to a false value (and therefore
@@ -160,7 +135,7 @@ METHODS
     if all of the atomic statements succeeded.
 
     Note that to activate the automatic transactions you don't have to do
-    anything other than setting the "rollback" option to a true value (or
+    anything more than setting the "rollback" option to a true value (or
     simply do nothing, as it is the default): DBIx::MultiStatementDo will
     automatically (and temporarily, via "local") set "$dbh->{AutoCommit}"
     and "$dbh->{RaiseError}" as needed. No other database handle attribute
@@ -174,9 +149,9 @@ METHODS
             dbh      => $dbh,
             rollback => 0
         );
-    
+
         my @results;
-    
+
         $batch->dbh->{AutoCommit} = 0;
         $batch->dbh->{RaiseError} = 1;
         eval {
@@ -184,6 +159,64 @@ METHODS
             $batch->dbh->commit;
             1
         } or eval { $batch->dbh->rollback };
+
+   Bind values as a list reference
+    The bind values can be passed as a reference to a list of listrefs, each
+    of which contains the bind values for the atomic statement it
+    corresponds to. The bind values inner lists must match the corresponding
+    atomic statements as returned by the internal *splitter object*, with
+    "undef" (or empty listref) elements where the corresponding atomic
+    statements have no *placeholders* (also known as or *parameter markers*
+    - represented by the "?" character). Here is an example:
+
+        # 7 statements (SQLite valid SQL)
+        my $sql_code = <<'SQL';
+        CREATE TABLE state (id, name);
+        INSERT INTO  state (id, name) VALUES (?, ?);
+        CREATE TABLE city (id, name, state_id);
+        INSERT INTO  city (id, name, state_id) VALUES (?, ?, ?);
+        INSERT INTO  city (id, name, state_id) VALUES (?, ?, ?);
+        DROP TABLE city;
+        DROP TABLE state
+        SQL
+
+        # Only 5 elements are required in @bind_values
+        my @bind_values = (
+            undef,
+            [ 1, 'Nevada' ],
+            undef,
+            [ 1, 'Las Vegas'  , 1 ],
+            [ 2, 'Carson City', 1 ]
+        );
+
+        my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
+
+        my @results = $batch->do( $sql_code, undef, \@bind_values )
+            or die $batch->dbh->errstr;
+
+    If the last statements have no placeholders, the corresponding "undef"s
+    don't need to be present in @bind_values, as shown above. @bind_values
+    can also have more elements than the number of the atomic statements, in
+    which case the excess elements are simply ignored.
+
+   Bind values as a flat list
+    This is a much more powerful feature of "do": when it gets the bind
+    values as a flat list, it automatically assigns them to the
+    corresponding placeholders (no *interleaving* "undef"s are necessary).
+
+    In other words, you can regard the given SQL code as a single big
+    statement and pass the bind values exactly as you would do with the
+    ordinary DBI "do" method.
+
+    For example, given $sql_code and the bind values of the example above,
+    you could simply do:
+
+        my @bind_values = (1, 'Nevada', 1, 'Las Vegas', 1, 2, 'Carson City', 1);
+
+        my @results = $batch->do( $sql_code, undef, @bind_values )
+            or die $batch->dbh->errstr;
+
+    and get exactly the same result.
 
   "dbh"
     *   "$batch->dbh"
@@ -207,41 +240,43 @@ METHODS
         Getter/setter method for the "splitter_options" option explained
         above.
 
-  "split"
-    *   "DBIx::MultiStatementDo->split( $sql_string )"
+  "split" as a class method
+    *WARNING* - This method has been removed! If you want to see how your
+    code will be/has been split, please use SQL::SplitStatement directly or
+    the instance methods "split" and "split_with_placeholders" described
+    below.
 
-    *WARNING* - This method is DEPRECATED and IT WILL BE REMOVED SOON! If
-    you just want to split your SQL code, please use SQL::SplitStatement
-    instead.
+  "split" and "split_with_placeholders"
+    *   "$batch->split( $sql_code )"
 
-    This is a class method which splits the given SQL string into its atomic
-    statements. Note that it is not the (instance) method used internally by
-    DBIx::MultiStatementDo to split the SQL code, but a class method exposed
-    here just for convenience.
+    *   "$batch->split_with_placeholders( $sql_code )"
 
-    It does that by simply calling:
+    These are the methods used internally to split the given SQL code. They
+    call respectively "split" and "split_with_placeholders" on a
+    SQL::SplitStatement instance built with the "splitter_options" described
+    above.
 
-        SQL::SplitStatement->new->split($sql_string)
+    Normally they shouldn't be used directly, but they could be useful if
+    you want to see how your SQL code has been split.
 
-    It therefore returns a list of strings containing the code of each
-    atomic statement, in the same order they appear in the given SQL string.
+    If you want instead to see how your SQL code *will be* split, that is
+    before executing "do", you can use SQL::SplitStatement by yourself:
 
-    Note that "SQL::SplitStatement->new()" is called with its default
-    options, and that tha value of "splitter_options" has no effect on it.
+        use SQL::SplitStatement;
+        my $splitter = SQL::SplitStatement->new( \%splitter_options );
+        my @statements = $splitter->split( $sql_code );
+        # Now you can check @statements if you want...
 
-    You shouldn't use it, unless you want to bypass all the other
-    functionality offered by this module and do it by yourself, in which
-    case you can use it like this:
+    and then you can execute your statements preventing "do" from performing
+    the splitting again, by passing @statements to it:
 
-        $dbh->do($_) foreach DBIx::MultiStatementDo->split( $sql_string );
-
-    (but, again, to do this it is better to directly use
-    SQL::SplitStatement).
+        my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
+        my @results = $batch->do( \@statements ); # This does not perform the splitting again.
 
 DEPENDENCIES
     DBIx::MultiStatementDo depends on the following modules:
 
-    *   SQL::SplitStatement 0.01001 or newer
+    *   SQL::SplitStatement 0.05000 or newer
 
     *   Moose
 

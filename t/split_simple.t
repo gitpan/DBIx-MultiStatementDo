@@ -8,6 +8,8 @@ use DBIx::MultiStatementDo;
 
 use Test::More tests => 3;
 
+my @statements;
+
 my $sql = <<'SQL';
 CREATE TABLE foo (
     foo_field_1 VARCHAR,
@@ -20,18 +22,18 @@ CREATE TABLE bar (
 );
 SQL
 
-my $dbh = DBI->connect( 'dbi:SQLite:dbname=:memory:', '', '');
+my $dbh = DBI->connect( 'dbi:SQLite:dbname=:memory:', '', '' );
 
 my $sql_splitter = DBIx::MultiStatementDo->new(
     dbh => $dbh,
     splitter_options => {
-        keep_semicolon        => 1,
+        keep_terminator       => 1,
         keep_extra_spaces     => 1,
         keep_empty_statements => 1
     }
 );
 
-my @statements = $sql_splitter->_split_sql($sql);
+@statements = @{ ( $sql_splitter->_split_with_placeholders($sql) )[0] };
 
 ok (
     @statements == 3,

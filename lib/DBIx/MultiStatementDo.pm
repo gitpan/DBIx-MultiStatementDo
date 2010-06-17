@@ -4,7 +4,7 @@ use Moose;
 
 use SQL::SplitStatement;
 
-our $VERSION = '0.02000';
+our $VERSION = '0.05000';
 $VERSION = eval $VERSION;
 
 has 'dbh' => (
@@ -28,7 +28,10 @@ sub _set_splitter {
 has '_splitter' => (
     is      => 'rw',
     isa     => 'SQL::SplitStatement',
-    handles => { _split_sql => 'split' },
+    handles => {
+        _split_sql               => 'split',
+        _split_with_placeholders => 'split_with_placeholders'
+    },
     lazy    => 1,
     default => sub { SQL::SplitStatement->new }
 );
@@ -40,46 +43,58 @@ has 'rollback' => (
 );
 
 sub do {
-    my ($self, $code, $attr, $bind_values) = @_;
+    my ($self, $code, $attr, @bind_values) = @_;
     
-    my @statements = $self->_split_sql($code);
+    my ( $statements, $placeholders )
+        = ref($code) ne 'ARRAY'
+        ? $self->_split_with_placeholders($code)
+        : ref( $code->[0] ) eq 'ARRAY'
+        ? @$code
+        : ( $code, undef );
+    
     my $dbh = $self->dbh;
     my @results;
-
+    
     if ( $self->rollback ) {
         local $dbh->{AutoCommit} = 0;
         local $dbh->{RaiseError} = 1;
         eval {
-            @results
-                = $self->_do_statements( \@statements, $attr, $bind_values );
+            @results = $self->_do_statements(
+                $statements, $placeholders, $attr, @bind_values
+            );
             $dbh->commit;
             1
         } or eval { $dbh->rollback }
     } else {
-        @results = $self->_do_statements( \@statements, $attr, $bind_values )
+        @results = $self->_do_statements(
+            $statements, $placeholders, $attr, @bind_values
+        )
     }
     
     return @results if wantarray;
-    # Scalar context and failure.
-    return unless @results == @statements;
     # Scalar context and success.
-    return 1
+    return 1 if @results == @$statements;
+    # Scalar context and failure.
+    return
 }
 
 sub _do_statements {
-    my ($self, $statements, $attr, $bind_values) = @_;
+    my ($self, $statements, $placeholders, $attr, @bind_values) = @_;
     
-    $bind_values ||= [];
+    my $first_bind_value = $bind_values[0];
+    my @flat_bind_values = ref($first_bind_value) eq 'ARRAY'
+        ? map { defined $_ ? @$_ : () } @$first_bind_value
+        : @bind_values;
+    
     my @results;
     my $statement_index = 0;
     my $dbh = $self->dbh;
-
-    for my $statement ( @{ $statements } ) {
-        my $statement_bind_values = $bind_values->[$statement_index++];
+    
+    for my $statement ( @$statements ) {
         my $result = $dbh->do(
             $statement,
             $attr,
-            defined $statement_bind_values ? @{ $statement_bind_values } : ()
+            splice @flat_bind_values, 0, $placeholders->[$statement_index++]
         );
         last unless $result;
         push @results, $result
@@ -106,13 +121,13 @@ DBIx::MultiStatementDo - Multiple SQL statements in a single do() call with any 
 
 =head1 VERSION
 
-Version 0.02000
+Version 0.05000
 
 =head1 SYNOPSIS
 
     use DBI;
     use DBIx::MultiStatementDo;
-    
+
     my $sql_code = <<'SQL';
     CREATE TABLE parent (a, b, c   , d    );
     CREATE TABLE child (x, y, "w;", "z;z");
@@ -125,38 +140,36 @@ Version 0.02000
     -- Standalone SQL; comment; w/ semicolons;
     INSERT INTO parent (a, b, c, d) VALUES ('pippo;', 'pluto;', NULL, NULL);
     SQL
-    
+
     my $dbh = DBI->connect( 'dbi:SQLite:dbname=my.db', '', '' );
-    
+
     my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
-    
+
     # Multiple SQL statements in a single call
     my @results = $batch->do( $sql_code )
         or die $batch->dbh->errstr;
-    
+
     print scalar(@results) . ' statements successfully executed!';
     # 4 statements successfully executed!
 
 =head1 DESCRIPTION
 
 Some DBI drivers don't support the execution of multiple statements in a single
-C<do()> call.
-This module tries to overcome such limitation, letting you execute any number of
-SQL statements (of any kind, not only DDL statements) in a single batch,
-with any DBI driver.
+C<do()> call. This module tries to overcome such limitation, letting you execute
+any number of SQL statements (of any kind, not only DDL statements) in a single
+batch, with any DBI driver.
 
-Here is how DBIx::MultiStatementDo works: behind the scenes
-it parses the SQL code, splits it into the atomic statements it is composed
-of and executes them one by one.
-To split the SQL code L<SQL::SplitStatement> is used, which employes a more
-sophisticated logic than a raw C<split> on the C<;> (semicolon) character,
-so that it is able to correctly handle the presence of the semicolon
-inside identifiers, values, comments or C<BEGIN..END> blocks
-(even nested blocks), as shown in the synopsis above.
+Here is how DBIx::MultiStatementDo works: behind the scenes it parses the SQL
+code, splits it into the atomic statements it is composed of and executes them
+one by one. To split the SQL code L<SQL::SplitStatement> is used, which uses a
+more sophisticated logic than a raw C<split> on the I<statement terminator
+token>, so that it is able to correctly handle the presence of said token inside
+identifiers, values, comments, C<BEGIN ... END> blocks (even nested) and
+procedural code, as (partially) exemplified in the synopsis above.
 
-Automatic transactions support is offered by default, so that you'll
-have the I<all-or-nothing> behaviour you would probably expect; if you prefer,
-you can anyway disable it and manage the transactions yourself.
+Automatic transactions support is offered by default, so that you'll have the
+I<all-or-nothing> behaviour you would probably expect; if you prefer, you can
+anyway disable it and manage the transactions yourself.
 
 =head1 METHODS
 
@@ -170,8 +183,8 @@ you can anyway disable it and manage the transactions yourself.
 
 =back
 
-It creates and returns a new DBIx::MultiStatementDo object.
-It accepts its options either as an hash or an hashref.
+It creates and returns a new DBIx::MultiStatementDo object. It accepts its
+options either as an hash or an hashref.
 
 The following options are recognized:
 
@@ -179,27 +192,26 @@ The following options are recognized:
 
 =item * C<dbh>
 
-The database handle object as returned by
-L<DBI::connect()|DBI/connect>.
-This option B<is required>.
+The database handle object as returned by L<DBI::connect()|DBI/connect>. This
+option B<is required>.
 
 =item * C<rollback>
 
-A Boolean option which enables (when true) or disables (when false)
-automatic transactions. It is set to a true value by default.
+A Boolean option which enables (when true) or disables (when false) automatic
+transactions. It is set to a true value by default.
 
 =item * C<splitter_options>
 
-This is the options hashref which is passed to
-C<< SQL::SplitStatement->new() >> to build the I<splitter object>, which is then
-internally used by C<DBIx::MultiStatementDo> to split the given SQL code.
+This is the options hashref which is passed unaltered to C<<
+SQL::SplitStatement->new() >> to build the I<splitter object>, which is then
+internally used by DBIx::MultiStatementDo to split the given SQL string.
 
-It defaults to C<undef>, which is the value that ensures the maximum
-portability across different DBMS. You should therefore not touch this option,
-unless you really know what you are doing.
+It defaults to C<undef>, which should be the best value if the given SQL string
+contains only standard SQL. If it contains contains also procedural code, you
+may need to fine tune this option.
 
-Please refer to L<< SQL::SplitStatement::new()|SQL::SplitStatement/new >>
-to see the options it takes.
+Please refer to L<< SQL::SplitStatement::new()|SQL::SplitStatement/new >> to see
+the options it takes.
 
 =back
 
@@ -207,27 +219,86 @@ to see the options it takes.
 
 =over 4
 
-=item * C<< $batch->do( $sql_string ) >>
+=item * C<< $batch->do( $sql_string | \@sql_statements ) >>
 
-=item * C<< $batch->do( $sql_string, \%attr ) >>
+=item * C<< $batch->do( $sql_string | \@sql_statements , \%attr ) >>
 
-=item * C<< $batch->do( $sql_string, \%attr, \@bind_values ) >>
+=item * C<< $batch->do( $sql_string | \@sql_statements , \%attr, \@bind_values | @bind_values ) >>
 
 =back
 
 This is the method which actually executes the SQL statements against your db.
-It takes a string containing one or more SQL statements and executes them
-one by one, in the same order they appear in the given SQL string.
+As its first (mandatory) argument, it takes an SQL string containing one or more
+SQL statements. The SQL string is split into its atomic statements, which are
+then executed one-by-one, in the same order they appear in the given string.
+
+The first argument can also be a reference to a list of (already split)
+statements, in which case no split is performed and the statements are executed
+as they appear in the list. The list can also be a two-elements list, where the
+first element is the statements listref as above, and the second is the
+I<placeholder numbers> listref, exactly as returned by the
+L<< SQL::SplitStatement::split_with_placeholders()|SQL::SplitStatement/split_with_placeholders >>
+method.
 
 Analogously to DBI's C<do()>, it optionally also takes an hashref of attributes
-(which is passed unaltered to C<< $batch->dbh->do() >>
-for each atomic statement), and a reference to a list
-of list refs, each of which contains the bind values for the atomic
-statement it corresponds to.
-The bind values inner lists must match the corresponding atomic statements
-as returned by the internal I<splitter object>,
-with C<undef> (or empty listref) elements where the corresponding atomic
-statements have no bind values. Here is an example:
+(which is passed unaltered to C<< $batch->dbh->do() >> for each atomic
+statement), and the I<bind values>, either as a listref or a flat list (see
+below for the difference).
+
+In list context, C<do> returns a list containing the values returned by the
+C<< $batch->dbh->do() >> call on each single atomic statement.
+
+If the C<rollback> option has been set (and therefore automatic transactions are
+enabled), in case one of the atomic statements fails, all the other succeeding
+statements executed so far, if any, are rolled back and the method (immediately)
+returns an empty list (since no statement has been actually committed).
+
+If the C<rollback> option is set to a false value (and therefore automatic
+transactions are disabled), the method immediately returns at the first failing
+statement as above, but it does not roll back any prior succeeding statement,
+and therefore a list containing the values returned by the statement executed so
+far is returned (and these statements are actually committed to the db, if
+C<< $dbh->{AutoCommit} >> is set).
+
+In scalar context it returns, regardless of the value of the C<rollback> option,
+C<undef> if any of the atomic statements failed, or a true value if all of the
+atomic statements succeeded.
+
+Note that to activate the automatic transactions you don't have to do anything
+more than setting the C<rollback> option to a true value (or simply do nothing,
+as it is the default): DBIx::MultiStatementDo will automatically (and
+temporarily, via C<local>) set C<< $dbh->{AutoCommit} >> and
+C<< $dbh->{RaiseError} >> as needed.
+No other database handle attribute is touched, so that you can for example set
+C<< $dbh->{PrintError} >> and enjoy its effects in case of a failing statement.
+
+If you want to disable the automatic transactions and manage them by yourself,
+you can do something along this:
+
+    my $batch = DBIx::MultiStatementDo->new(
+        dbh      => $dbh,
+        rollback => 0
+    );
+
+    my @results;
+
+    $batch->dbh->{AutoCommit} = 0;
+    $batch->dbh->{RaiseError} = 1;
+    eval {
+        @results = $batch->do( $sql_string );
+        $batch->dbh->commit;
+        1
+    } or eval { $batch->dbh->rollback };
+
+=head3 Bind values as a list reference
+
+The bind values can be passed as a reference to a list of listrefs, each of
+which contains the bind values for the atomic statement it corresponds to. The
+bind values inner lists must match the corresponding atomic statements as
+returned by the internal I<splitter object>, with C<undef> (or empty listref)
+elements where the corresponding atomic statements have no I<placeholders> (also
+known as or I<parameter markers> - represented by the C<?> character). Here is
+an example:
 
     # 7 statements (SQLite valid SQL)
     my $sql_code = <<'SQL';
@@ -239,72 +310,44 @@ statements have no bind values. Here is an example:
     DROP TABLE city;
     DROP TABLE state
     SQL
-    
+
     # Only 5 elements are required in @bind_values
     my @bind_values = (
-        undef                  ,
-        [ 1, 'Nevada' ]        ,
-        undef                  ,
+        undef,
+        [ 1, 'Nevada' ],
+        undef,
         [ 1, 'Las Vegas'  , 1 ],
         [ 2, 'Carson City', 1 ]
     );
-    
+
     my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
-    
+
     my @results = $batch->do( $sql_code, undef, \@bind_values )
         or die $batch->dbh->errstr;
 
-If the last statements have no bind values, the corresponding C<undef>s
-don't need to be present in C<@bind_values>, as shown above.
-C<@bind_values> can also have more elements than the number of the atomic
-statements, in which case the excess elements are simply ignored.
+If the last statements have no placeholders, the corresponding C<undef>s don't
+need to be present in C<@bind_values>, as shown above. C<@bind_values> can also
+have more elements than the number of the atomic statements, in which case the
+excess elements are simply ignored.
 
-In list context, C<do> returns a list containing the values returned by the
-C<< $batch->dbh->do() >> call on each single atomic statement.
+=head3 Bind values as a flat list
 
-If the C<rollback> option has been set (and therefore automatic transactions
-are enabled), in case one of the atomic statements fails, all the other
-succeeding statements executed so far, if any exists, are rolled back and the
-method (immediately) returns an empty list (since no statement has been actually
-committed).
+This is a much more powerful feature of C<do>: when it gets the bind values as a
+flat list, it automatically assigns them to the corresponding placeholders (no
+I<interleaving> C<undef>s are necessary).
 
-If the C<rollback> option is set to a false value (and therefore automatic
-transactions are disabled), the method immediately returns at the first failing
-statement as above, but it does not roll back any prior succeeding statement,
-and therefore a list containing the values returned by the statement executed
-so far is returned (and these statements are actually committed to the db, if 
-C<< $dbh->{AutoCommit} >> is set).
+In other words, you can regard the given SQL code as a single big statement and
+pass the bind values exactly as you would do with the ordinary DBI C<do> method.
 
-In scalar context it returns, regardless of the value of the C<rollback> option,
-C<undef> if any of the atomic statements failed, or a true value if all
-of the atomic statements succeeded.
+For example, given C<$sql_code> and the bind values of the example above, you
+could simply do:
 
-Note that to activate the automatic transactions you don't have to do anything
-other than setting the C<rollback> option to a true value
-(or simply do nothing, as it is the default):
-DBIx::MultiStatementDo will automatically (and temporarily, via C<local>) set
-C<< $dbh->{AutoCommit} >> and  C<< $dbh->{RaiseError} >> as needed.
-No other database handle attribute is touched, so that you can for example
-set C<< $dbh->{PrintError} >> and enjoy its effects in case of a failing
-statement.
+    my @bind_values = (1, 'Nevada', 1, 'Las Vegas', 1, 2, 'Carson City', 1);
 
-If you want to disable the automatic transactions and manage them by yourself,
-you can do something along this:
+    my @results = $batch->do( $sql_code, undef, @bind_values )
+        or die $batch->dbh->errstr;
 
-    my $batch = DBIx::MultiStatementDo->new(
-        dbh      => $dbh,
-        rollback => 0
-    );
-    
-    my @results;
-    
-    $batch->dbh->{AutoCommit} = 0;
-    $batch->dbh->{RaiseError} = 1;
-    eval {
-        @results = $batch->do( $sql_string );
-        $batch->dbh->commit;
-        1
-    } or eval { $batch->dbh->rollback };
+and get exactly the same result.
 
 =head2 C<dbh>
 
@@ -342,40 +385,44 @@ Getter/setter method for the C<splitter_options> option explained above.
 
 =back
 
-=head2 C<split>
+=head2 C<split> as a class method
+
+B<*WARNING*> - This method has been removed! If you want to see how your code
+will be/has been split, please use L<SQL::SplitStatement> directly or the
+instance methods C<< split >> and C<< split_with_placeholders >> described
+below.
+
+=head2 C<split> and C<split_with_placeholders>
 
 =over 4
 
-=item * C<< DBIx::MultiStatementDo->split( $sql_string ) >>
+=item * C<< $batch->split( $sql_code ) >>
+
+=item * C<< $batch->split_with_placeholders( $sql_code ) >>
 
 =back
 
-B<*WARNING*> - This method is B<DEPRECATED> and B<IT WILL BE REMOVED SOON>!
-If you just want to split your SQL code, please use L<SQL::SplitStatement>
-instead.
+These are the methods used internally to split the given SQL code.
+They call respectively C<split> and C<split_with_placeholders> on a
+SQL::SplitStatement instance built with the C<splitter_options>
+described above.
 
-This is a class method which splits the given SQL string into
-its atomic statements. Note that it is not the (instance) method used
-internally by DBIx::MultiStatementDo to split the SQL code, but a class
-method exposed here just for convenience.
+Normally they shouldn't be used directly, but they could be useful if
+you want to see how your SQL code has been split.
 
-It does that by simply calling:
+If you want instead to see how your SQL code I<will be> split, that is
+before executing C<do>, you can use SQL::SplitStatement by yourself:
 
-    SQL::SplitStatement->new->split($sql_string)
+    use SQL::SplitStatement;
+    my $splitter = SQL::SplitStatement->new( \%splitter_options );
+    my @statements = $splitter->split( $sql_code );
+    # Now you can check @statements if you want...
 
-It therefore returns a list of strings containing the code of each atomic
-statement, in the same order they appear in the given SQL string.
+and then you can execute your statements preventing C<do> from performing
+the splitting again, by passing C<@statements> to it:
 
-Note that C<< SQL::SplitStatement->new() >> is called with its default
-options, and that tha value of C<splitter_options> has no effect on it.
-
-You shouldn't use it, unless you want to bypass all the other
-functionality offered by this module and do it by yourself, in which case
-you can use it like this:
-
-    $dbh->do($_) foreach DBIx::MultiStatementDo->split( $sql_string );
-
-(but, again, to do this it is better to directly use L<SQL::SplitStatement>).
+    my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
+    my @results = $batch->do( \@statements ); # This does not perform the splitting again.
 
 =head1 DEPENDENCIES
 
@@ -383,7 +430,7 @@ DBIx::MultiStatementDo depends on the following modules:
 
 =over 4
 
-=item * L<SQL::SplitStatement> 0.01001 or newer
+=item * L<SQL::SplitStatement> 0.05000 or newer
 
 =item * L<Moose>
 

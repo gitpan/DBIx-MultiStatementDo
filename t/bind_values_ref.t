@@ -12,18 +12,20 @@ use Test::More tests => 3;
 my $sql_code = <<'SQL';
 CREATE TABLE state (id, name);
 INSERT INTO  state (id, name) VALUES (?, ?);
-CREATE TABLE city (id, name, state_id);
-INSERT INTO  city (id, name, state_id) VALUES (?, ?, ?);
-INSERT INTO  city (id, name, state_id) VALUES (?, ?, ?);
+CREATE TABLE city  (id, name, state_id);
+INSERT INTO  city  (id, name, state_id) VALUES (?, ?, ?);
+INSERT INTO  city  (id, name, state_id) VALUES (?, ?, ?);
 DROP TABLE state;
 SQL
 
 my @bind_values = (
-    undef              ,
+    undef              , # or []
     [ 1, 'New York' ]  ,
-    []                 ,
+    []                 , # or undef
     [ 1, 'Albany' , 1 ],
-    [ 2, 'Buffalo', 1 ]
+    [ 2, 'Buffalo', 1 ],
+    undef              ,
+    []
 );
 
 my $dbh = DBI->connect( 'dbi:SQLite:dbname=:memory:', '', '', {

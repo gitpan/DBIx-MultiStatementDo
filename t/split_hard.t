@@ -8,6 +8,8 @@ use DBIx::MultiStatementDo;
 
 use Test::More tests => 3;
 
+my @statements;
+
 my $sql = <<'SQL';
 CREATE TABLE child( x, y, "w;", "z;z", FOREIGN KEY (x, y) REFERENCES parent (a,b) );
 -- SQL; comment;
@@ -19,26 +21,26 @@ BEGIN
 END
 SQL
 
-my @statements = DBIx::MultiStatementDo->split($sql);
+@statements = DBIx::MultiStatementDo->split($sql);
 
 cmp_ok (
     @statements, '==', 3,
     'correct number of statements - class method'
 );
 
-my $dbh = DBI->connect( 'dbi:SQLite:dbname=:memory:', '', '');
+my $dbh = DBI->connect( 'dbi:SQLite:dbname=:memory:', '', '' );
 
 my $sql_splitter = DBIx::MultiStatementDo->new(
     dbh => $dbh,
     splitter_options => {
-        keep_semicolon        => 1,
+        keep_terminator       => 1,
         keep_extra_spaces     => 1,
         keep_comments         => 1,
         keep_empty_statements => 1
     }
 );
 
-@statements = $sql_splitter->_split_sql($sql);
+@statements = @{ ( $sql_splitter->_split_with_placeholders($sql) )[0] };
 
 cmp_ok (
     scalar(@statements), '==', 3,
