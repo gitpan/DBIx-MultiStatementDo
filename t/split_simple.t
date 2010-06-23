@@ -6,7 +6,7 @@ use warnings;
 use DBI;
 use DBIx::MultiStatementDo;
 
-use Test::More tests => 3;
+use Test::More tests => 5;
 
 my @statements;
 
@@ -33,7 +33,7 @@ my $sql_splitter = DBIx::MultiStatementDo->new(
     }
 );
 
-@statements = @{ ( $sql_splitter->_split_with_placeholders($sql) )[0] };
+@statements = @{ ( $sql_splitter->split_with_placeholders($sql) )[0] };
 
 ok (
     @statements == 3,
@@ -45,9 +45,23 @@ is (
     'code successfully rebuilt - instance method all set'
 );
 
-@statements = DBIx::MultiStatementDo->split($sql);
+# TODO: next 2 tests to be removed once _split_with_placeholders will be
+# removed.
+@statements = @{ ( $sql_splitter->_split_with_placeholders($sql) )[0] };
+
+ok (
+    @statements == 3,
+    'correct number of statements - private instance method all set'
+);
+
+is (
+    join('', @statements), $sql,
+    'code successfully rebuilt - private instance method all set'
+);
+
+@statements = $sql_splitter->new( dbh => $dbh )->split($sql);
 
 cmp_ok (
     scalar(@statements), '==', 2,
-    'correct number of statements - class method'
+    'number of statements returned by split'
 );

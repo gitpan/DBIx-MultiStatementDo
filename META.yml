@@ -23,7 +23,7 @@ no_index:
     - xt
 requires:
   Moose: 0
-  SQL::SplitStatement: 0.05000
+  SQL::SplitStatement: 0.05003
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.05000
+version: 0.06000

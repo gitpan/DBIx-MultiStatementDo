@@ -4,7 +4,7 @@ use Moose;
 
 use SQL::SplitStatement;
 
-our $VERSION = '0.05000';
+our $VERSION = '0.06000';
 $VERSION = eval $VERSION;
 
 has 'dbh' => (
@@ -28,10 +28,7 @@ sub _set_splitter {
 has '_splitter' => (
     is      => 'rw',
     isa     => 'SQL::SplitStatement',
-    handles => {
-        _split_sql               => 'split',
-        _split_with_placeholders => 'split_with_placeholders'
-    },
+    handles => [ qw(split split_with_placeholders) ],
     lazy    => 1,
     default => sub { SQL::SplitStatement->new }
 );
@@ -47,7 +44,7 @@ sub do {
     
     my ( $statements, $placeholders )
         = ref($code) ne 'ARRAY'
-        ? $self->_split_with_placeholders($code)
+        ? $self->split_with_placeholders($code)
         : ref( $code->[0] ) eq 'ARRAY'
         ? @$code
         : ( $code, undef );
@@ -103,10 +100,8 @@ sub _do_statements {
     return @results
 }
 
-sub split {
-    my ($self, $code) = @_;
-    return SQL::SplitStatement->new->split($code)
-}
+# TODO: deprecated, to remove!
+sub _split_with_placeholders { shift->split_with_placeholders(@_) }
 
 no Moose;
 __PACKAGE__->meta->make_immutable;
@@ -121,7 +116,7 @@ DBIx::MultiStatementDo - Multiple SQL statements in a single do() call with any 
 
 =head1 VERSION
 
-Version 0.05000
+Version 0.06000
 
 =head1 SYNOPSIS
 
@@ -294,7 +289,7 @@ you can do something along this:
 
 The bind values can be passed as a reference to a list of listrefs, each of
 which contains the bind values for the atomic statement it corresponds to. The
-bind values inner lists must match the corresponding atomic statements as
+bind values I<inner> lists must match the corresponding atomic statements as
 returned by the internal I<splitter object>, with C<undef> (or empty listref)
 elements where the corresponding atomic statements have no I<placeholders> (also
 known as or I<parameter markers> - represented by the C<?> character). Here is
@@ -385,13 +380,6 @@ Getter/setter method for the C<splitter_options> option explained above.
 
 =back
 
-=head2 C<split> as a class method
-
-B<*WARNING*> - This method has been removed! If you want to see how your code
-will be/has been split, please use L<SQL::SplitStatement> directly or the
-instance methods C<< split >> and C<< split_with_placeholders >> described
-below.
-
 =head2 C<split> and C<split_with_placeholders>
 
 =over 4
@@ -424,13 +412,20 @@ the splitting again, by passing C<@statements> to it:
     my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
     my @results = $batch->do( \@statements ); # This does not perform the splitting again.
 
+B<Warning!> In previous versions, the method C<split_with_placeholders>
+documented above did not work, so there is the possibility that someone
+used the (private, undocumented) C<_split_with_placeholders> method instead
+(which worked correclty).
+In this case, please start using the public method (which now works as
+advertised), since the private method will be removed in future versions.
+
 =head1 DEPENDENCIES
 
 DBIx::MultiStatementDo depends on the following modules:
 
 =over 4
 
-=item * L<SQL::SplitStatement> 0.05000 or newer
+=item * L<SQL::SplitStatement> 0.05003 or newer
 
 =item * L<Moose>
 

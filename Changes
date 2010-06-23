@@ -1,5 +1,20 @@
 Revision history for DBIx-MultiStatementDo
 
+0.06000 2010-06-23 06:00:00 CET
+
+ * By an unfortunate accident, the advertised "splitter_with_placeholders"
+   (instance) method did not exist, since it had been renamed to the
+   (undocumented) "_splitter_with_placeholders". Now
+   "splitter_with_placeholders" has been restored (and works exaclty as
+   documented), while "_splitter_with_placeholders" has been left just in case
+   someone who did not find the public method was using it.
+ 
+ * Minimum SQL::SplitStatement required version has been bumped to 0.05003.
+ 
+ * Minor docs and tests additions.
+
+ * End of deprecation cycle on "split" as a class method.
+
 0.05000 2010-06-17 05:00:00 CET
 
  * "do()" can now take also a list of (already split) statements as its first

@@ -21,14 +21,15 @@ BEGIN
 END
 SQL
 
-@statements = DBIx::MultiStatementDo->split($sql);
+my $dbh = DBI->connect( 'dbi:SQLite:dbname=:memory:', '', '' );
+
+@statements
+    = @{ ( DBIx::MultiStatementDo->new(dbh => $dbh)->split_with_placeholders($sql) )[0] };
 
 cmp_ok (
     @statements, '==', 3,
     'correct number of statements - class method'
 );
-
-my $dbh = DBI->connect( 'dbi:SQLite:dbname=:memory:', '', '' );
 
 my $sql_splitter = DBIx::MultiStatementDo->new(
     dbh => $dbh,
@@ -40,7 +41,7 @@ my $sql_splitter = DBIx::MultiStatementDo->new(
     }
 );
 
-@statements = @{ ( $sql_splitter->_split_with_placeholders($sql) )[0] };
+@statements = $sql_splitter->split($sql);
 
 cmp_ok (
     scalar(@statements), '==', 3,

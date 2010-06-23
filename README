@@ -3,7 +3,7 @@ NAME
     with any DBI driver
 
 VERSION
-    Version 0.05000
+    Version 0.06000
 
 SYNOPSIS
         use DBI;
@@ -163,11 +163,12 @@ METHODS
    Bind values as a list reference
     The bind values can be passed as a reference to a list of listrefs, each
     of which contains the bind values for the atomic statement it
-    corresponds to. The bind values inner lists must match the corresponding
-    atomic statements as returned by the internal *splitter object*, with
-    "undef" (or empty listref) elements where the corresponding atomic
-    statements have no *placeholders* (also known as or *parameter markers*
-    - represented by the "?" character). Here is an example:
+    corresponds to. The bind values *inner* lists must match the
+    corresponding atomic statements as returned by the internal *splitter
+    object*, with "undef" (or empty listref) elements where the
+    corresponding atomic statements have no *placeholders* (also known as or
+    *parameter markers* - represented by the "?" character). Here is an
+    example:
 
         # 7 statements (SQLite valid SQL)
         my $sql_code = <<'SQL';
@@ -240,12 +241,6 @@ METHODS
         Getter/setter method for the "splitter_options" option explained
         above.
 
-  "split" as a class method
-    *WARNING* - This method has been removed! If you want to see how your
-    code will be/has been split, please use SQL::SplitStatement directly or
-    the instance methods "split" and "split_with_placeholders" described
-    below.
-
   "split" and "split_with_placeholders"
     *   "$batch->split( $sql_code )"
 
@@ -273,10 +268,17 @@ METHODS
         my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
         my @results = $batch->do( \@statements ); # This does not perform the splitting again.
 
+    Warning! In previous versions, the method "split_with_placeholders"
+    documented above did not work, so there is the possibility that someone
+    used the (private, undocumented) "_split_with_placeholders" method
+    instead (which worked correclty). In this case, please start using the
+    public method (which now works as advertised), since the private method
+    will be removed in future versions.
+
 DEPENDENCIES
     DBIx::MultiStatementDo depends on the following modules:
 
-    *   SQL::SplitStatement 0.05000 or newer
+    *   SQL::SplitStatement 0.05003 or newer
 
     *   Moose
 
