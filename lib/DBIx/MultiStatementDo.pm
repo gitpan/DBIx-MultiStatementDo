@@ -4,7 +4,7 @@ use Moose;
 
 use SQL::SplitStatement;
 
-our $VERSION = '0.06000';
+our $VERSION = '0.06001';
 $VERSION = eval $VERSION;
 
 has 'dbh' => (
@@ -116,7 +116,7 @@ DBIx::MultiStatementDo - Multiple SQL statements in a single do() call with any 
 
 =head1 VERSION
 
-Version 0.06000
+Version 0.06001
 
 =head1 SYNOPSIS
 

@@ -1,12 +1,18 @@
 Revision history for DBIx-MultiStatementDo
 
+0.06001 2010-06-23 06:10:00 CET
+
+ * Simply a bug in this Changes file!
+   (The method "split_with_placeholders" described below, was called
+   "splitter_with_placeholders").
+
 0.06000 2010-06-23 06:00:00 CET
 
- * By an unfortunate accident, the advertised "splitter_with_placeholders"
+ * By an unfortunate accident, the advertised "split_with_placeholders"
    (instance) method did not exist, since it had been renamed to the
-   (undocumented) "_splitter_with_placeholders". Now
-   "splitter_with_placeholders" has been restored (and works exaclty as
-   documented), while "_splitter_with_placeholders" has been left just in case
+   (undocumented) "_split_with_placeholders". Now
+   "split_with_placeholders" has been restored (and works exaclty as
+   documented), while "_split_with_placeholders" has been left just in case
    someone who did not find the public method was using it.
  
  * Minimum SQL::SplitStatement required version has been bumped to 0.05003.

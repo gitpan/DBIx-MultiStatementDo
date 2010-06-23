@@ -26,4 +26,4 @@ requires:
   SQL::SplitStatement: 0.05003
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.06000
+version: 0.06001
