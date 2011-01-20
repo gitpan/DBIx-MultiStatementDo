@@ -1,5 +1,18 @@
 Revision history for DBIx-MultiStatementDo
 
+0.10000 2011-01-20 07:00:00 CET
+
+* Minimum SQL::SplitStatement required version has been bumped to 0.10000
+
+* Clarified the difference between bind values as a list reference and as a flat
+  list.
+
+* Tests for this.
+
+* _split_with_placeholders removed for good (end of deprecation cycle).
+
+* Various code refactorings.
+
 0.06001 2010-06-23 06:10:00 CET
 
  * Simply a bug in this Changes file!

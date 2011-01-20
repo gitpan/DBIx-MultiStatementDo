@@ -1,32 +1,60 @@
-sub author_tests    { }
-sub author_requires { }
-sub readme_from     { }
 
-use inc::Module::Install;
+use strict;
+use warnings;
 
-my $main_module = 'lib/DBIx/MultiStatementDo.pm';
+BEGIN { require 5.006; }
 
-name          'DBIx-MultiStatementDo';
-abstract_from $main_module;
-version_from  $main_module;
-readme_from   $main_module;
-author        q{Emanuele Zeppieri <emazep@cpan.org>};
-license       'perl';
+use ExtUtils::MakeMaker 6.31;
 
-requires 'Moose';
-requires 'SQL::SplitStatement' => '0.05003';
 
-test_requires 'DBD::SQLite';
-test_requires 'DBI';
-test_requires 'Test::More';
 
-author_requires 'Test::Pod' => '1.14';
-author_requires 'Test::Pod::Coverage' => '1.08';
-author_requires 'Module::Install::ReadmeFromPod';
-author_requires 'Test::CheckManifest';
+my %WriteMakefileArgs = (
+  'ABSTRACT' => 'Multiple SQL statements in a single do() call with any DBI driver',
+  'AUTHOR' => 'Emanuele Zeppieri <emazep@cpan.org>',
+  'BUILD_REQUIRES' => {
+    'DBI' => '0',
+    'English' => '0',
+    'File::Find' => '0',
+    'File::Temp' => '0',
+    'Test::Exception' => '0.27',
+    'Test::More' => '0.7'
+  },
+  'CONFIGURE_REQUIRES' => {
+    'ExtUtils::MakeMaker' => '6.31'
+  },
+  'DISTNAME' => 'DBIx-MultiStatementDo',
+  'EXE_FILES' => [],
+  'LICENSE' => 'perl',
+  'NAME' => 'DBIx::MultiStatementDo',
+  'PREREQ_PM' => {
+    'Carp' => '0',
+    'Moose' => '0',
+    'SQL::SplitStatement' => '0.10000'
+  },
+  'VERSION' => '0.10000',
+  'test' => {
+    'TESTS' => 't/*.t'
+  }
+);
 
-tests 't/*.t';
 
-author_tests 'xt';
+unless ( eval { ExtUtils::MakeMaker->VERSION(6.56) } ) {
+  my $br = delete $WriteMakefileArgs{BUILD_REQUIRES};
+  my $pp = $WriteMakefileArgs{PREREQ_PM};
+  for my $mod ( keys %$br ) {
+    if ( exists $pp->{$mod} ) {
+      $pp->{$mod} = $br->{$mod} if $br->{$mod} > $pp->{$mod};
+    }
+    else {
+      $pp->{$mod} = $br->{$mod};
+    }
+  }
+}
 
-WriteAll;
+delete $WriteMakefileArgs{CONFIGURE_REQUIRES}
+  unless eval { ExtUtils::MakeMaker->VERSION(6.52) };
+
+WriteMakefile(%WriteMakefileArgs);
+
+
+

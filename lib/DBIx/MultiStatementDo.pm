@@ -1,11 +1,11 @@
 package DBIx::MultiStatementDo;
 
 use Moose;
+use Carp qw(croak);
 
-use SQL::SplitStatement;
+use SQL::SplitStatement 0.10000;
 
-our $VERSION = '0.06001';
-$VERSION = eval $VERSION;
+our $VERSION = '0.10000';
 
 has 'dbh' => (
     is       => 'rw',
@@ -43,11 +43,26 @@ sub do {
     my ($self, $code, $attr, @bind_values) = @_;
     
     my ( $statements, $placeholders )
-        = ref($code) ne 'ARRAY'
+        = ! ref($code)
         ? $self->split_with_placeholders($code)
         : ref( $code->[0] ) eq 'ARRAY'
         ? @$code
         : ( $code, undef );
+    
+    my @compound_bind_values;
+    if ( @bind_values >= 1 ) {
+        if ( ! ref $bind_values[0] ) {
+            # @bind_values was a FLAT LIST
+            ref($placeholders) ne 'ARRAY' and croak(
+q[Bind values as a flat list require the placeholder numbers listref to be passed as well]
+            );
+            push @compound_bind_values, [ splice @bind_values, 0, $_ ]
+                foreach @$placeholders
+        } else {
+            @compound_bind_values = @{ $bind_values[0] }
+        }
+    }
+    
     
     my $dbh = $self->dbh;
     my @results;
@@ -57,41 +72,31 @@ sub do {
         local $dbh->{RaiseError} = 1;
         eval {
             @results = $self->_do_statements(
-                $statements, $placeholders, $attr, @bind_values
+                $statements, $attr, \@compound_bind_values
             );
             $dbh->commit;
             1
         } or eval { $dbh->rollback }
     } else {
         @results = $self->_do_statements(
-            $statements, $placeholders, $attr, @bind_values
+            $statements, $attr, \@compound_bind_values
         )
     }
     
-    return @results if wantarray;
-    # Scalar context and success.
-    return 1 if @results == @$statements;
-    # Scalar context and failure.
-    return
+    return @results if wantarray;         # List context.
+    return 1 if @results == @$statements; # Scalar context and success.
+    return                                # Scalar context and failure.
 }
 
 sub _do_statements {
-    my ($self, $statements, $placeholders, $attr, @bind_values) = @_;
-    
-    my $first_bind_value = $bind_values[0];
-    my @flat_bind_values = ref($first_bind_value) eq 'ARRAY'
-        ? map { defined $_ ? @$_ : () } @$first_bind_value
-        : @bind_values;
+    my ($self, $statements, $attr, $compound_bind_values) = @_;
     
     my @results;
-    my $statement_index = 0;
     my $dbh = $self->dbh;
     
     for my $statement ( @$statements ) {
         my $result = $dbh->do(
-            $statement,
-            $attr,
-            splice @flat_bind_values, 0, $placeholders->[$statement_index++]
+            $statement, $attr, @{ shift(@$compound_bind_values) || [] }
         );
         last unless $result;
         push @results, $result
@@ -99,9 +104,6 @@ sub _do_statements {
     
     return @results
 }
-
-# TODO: deprecated, to remove!
-sub _split_with_placeholders { shift->split_with_placeholders(@_) }
 
 no Moose;
 __PACKAGE__->meta->make_immutable;
@@ -116,14 +118,14 @@ DBIx::MultiStatementDo - Multiple SQL statements in a single do() call with any 
 
 =head1 VERSION
 
-Version 0.06001
+Version 0.10000
 
 =head1 SYNOPSIS
 
     use DBI;
     use DBIx::MultiStatementDo;
-
-    my $sql_code = <<'SQL';
+    
+my $sql_code = <<'SQL';
     CREATE TABLE parent (a, b, c   , d    );
     CREATE TABLE child (x, y, "w;", "z;z");
     /* C-style comment; */
@@ -134,16 +136,16 @@ Version 0.06001
     END;
     -- Standalone SQL; comment; w/ semicolons;
     INSERT INTO parent (a, b, c, d) VALUES ('pippo;', 'pluto;', NULL, NULL);
-    SQL
-
+SQL
+    
     my $dbh = DBI->connect( 'dbi:SQLite:dbname=my.db', '', '' );
-
+    
     my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
-
+    
     # Multiple SQL statements in a single call
     my @results = $batch->do( $sql_code )
         or die $batch->dbh->errstr;
-
+    
     print scalar(@results) . ' statements successfully executed!';
     # 4 statements successfully executed!
 
@@ -159,8 +161,10 @@ code, splits it into the atomic statements it is composed of and executes them
 one by one. To split the SQL code L<SQL::SplitStatement> is used, which uses a
 more sophisticated logic than a raw C<split> on the I<statement terminator
 token>, so that it is able to correctly handle the presence of said token inside
-identifiers, values, comments, C<BEGIN ... END> blocks (even nested) and
-procedural code, as (partially) exemplified in the synopsis above.
+identifiers, values, comments, C<BEGIN ...  END> blocks (even nested),
+I<dollar-quoted> strings, MySQL custom C<DELIMITER>s etc., as (partially)
+exemplified in the synopsis above.
+Moreover, it is able to handle procedural code.
 
 Automatic transactions support is offered by default, so that you'll have the
 I<all-or-nothing> behaviour you would probably expect; if you prefer, you can
@@ -246,14 +250,14 @@ C<< $batch->dbh->do() >> call on each single atomic statement.
 If the C<rollback> option has been set (and therefore automatic transactions are
 enabled), in case one of the atomic statements fails, all the other succeeding
 statements executed so far, if any, are rolled back and the method (immediately)
-returns an empty list (since no statement has been actually committed).
+returns an empty list (since no statements have actually been committed).
 
 If the C<rollback> option is set to a false value (and therefore automatic
 transactions are disabled), the method immediately returns at the first failing
 statement as above, but it does not roll back any prior succeeding statement,
-and therefore a list containing the values returned by the statement executed so
-far is returned (and these statements are actually committed to the db, if
-C<< $dbh->{AutoCommit} >> is set).
+and therefore a list containing the values returned by the statements
+(successfully) executed so far is returned (and these statements are actually
+committed to the db, if C<< $dbh->{AutoCommit} >> is set).
 
 In scalar context it returns, regardless of the value of the C<rollback> option,
 C<undef> if any of the atomic statements failed, or a true value if all of the
@@ -264,8 +268,9 @@ more than setting the C<rollback> option to a true value (or simply do nothing,
 as it is the default): DBIx::MultiStatementDo will automatically (and
 temporarily, via C<local>) set C<< $dbh->{AutoCommit} >> and
 C<< $dbh->{RaiseError} >> as needed.
-No other database handle attribute is touched, so that you can for example set
-C<< $dbh->{PrintError} >> and enjoy its effects in case of a failing statement.
+No other DBI db handle attribute is ever touched, so that you can for example
+set C<< $dbh->{PrintError} >> and enjoy its effects in case of a failing
+statement.
 
 If you want to disable the automatic transactions and manage them by yourself,
 you can do something along this:
@@ -274,9 +279,9 @@ you can do something along this:
         dbh      => $dbh,
         rollback => 0
     );
-
+    
     my @results;
-
+    
     $batch->dbh->{AutoCommit} = 0;
     $batch->dbh->{RaiseError} = 1;
     eval {
@@ -296,7 +301,7 @@ known as or I<parameter markers> - represented by the C<?> character). Here is
 an example:
 
     # 7 statements (SQLite valid SQL)
-    my $sql_code = <<'SQL';
+my $sql_code = <<'SQL';
     CREATE TABLE state (id, name);
     INSERT INTO  state (id, name) VALUES (?, ?);
     CREATE TABLE city (id, name, state_id);
@@ -304,45 +309,62 @@ an example:
     INSERT INTO  city (id, name, state_id) VALUES (?, ?, ?);
     DROP TABLE city;
     DROP TABLE state
-    SQL
-
-    # Only 5 elements are required in @bind_values
-    my @bind_values = (
-        undef,
-        [ 1, 'Nevada' ],
-        undef,
+SQL
+    
+    # Only 5 elements are required in the bind values list
+    my $bind_values = [
+        undef                  , # or []
+        [ 1, 'Nevada' ]        ,
+        []                     , # or undef
         [ 1, 'Las Vegas'  , 1 ],
         [ 2, 'Carson City', 1 ]
-    );
-
+    ];
+    
     my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
-
-    my @results = $batch->do( $sql_code, undef, \@bind_values )
+    
+    my @results = $batch->do( $sql_code, undef, $bind_values )
         or die $batch->dbh->errstr;
 
 If the last statements have no placeholders, the corresponding C<undef>s don't
-need to be present in C<@bind_values>, as shown above. C<@bind_values> can also
-have more elements than the number of the atomic statements, in which case the
-excess elements are simply ignored.
+need to be present in the bind values list, as shown above.
+The bind values list can also have more elements than the number of the atomic
+statements, in which case the excess elements will simply be ignored.
 
 =head3 Bind values as a flat list
 
 This is a much more powerful feature of C<do>: when it gets the bind values as a
 flat list, it automatically assigns them to the corresponding placeholders (no
-I<interleaving> C<undef>s are necessary).
+I<interleaving> C<undef>s are necessary in this case).
 
 In other words, you can regard the given SQL code as a single big statement and
 pass the bind values exactly as you would do with the ordinary DBI C<do> method.
 
-For example, given C<$sql_code> and the bind values of the example above, you
-could simply do:
+For example, given C<$sql_code> from the example above, you could simply do:
 
-    my @bind_values = (1, 'Nevada', 1, 'Las Vegas', 1, 2, 'Carson City', 1);
-
+    my @bind_values = ( 1, 'Nevada', 1, 'Las Vegas', 1, 2, 'Carson City', 1 );
+    
     my @results = $batch->do( $sql_code, undef, @bind_values )
         or die $batch->dbh->errstr;
 
 and get exactly the same result.
+
+=head3 Difference between bind values as a list reference and as a flat list
+
+If you want to pass the bind values as a flat list as described above, you must
+pass the first parameter to C<do> either as a string (so that the internal
+splitting is performed) or, if you want to disable the internal splitting, as a
+reference to the two-elements list containing both the statements and the
+placeholder numbers listrefs (as described above in L<do>).
+
+In other words, you can't pass the bind values as a flat list and pass at the
+same time the (already split) statements without the placeholder numbers
+listref. To do so, you need to pass the bind values as a list reference instead,
+otherwise C<do> throws an exception.
+
+To summarize, bind values as a flat list is easier to use but it suffers from
+this subtle limitation, while bind values as a list reference is a little bit
+more cumbersome to use, but it has no limitations and can therefore always be
+used.
 
 =head2 C<dbh>
 
@@ -407,17 +429,21 @@ before executing C<do>, you can use SQL::SplitStatement by yourself:
     # Now you can check @statements if you want...
 
 and then you can execute your statements preventing C<do> from performing
-the splitting again, by passing C<@statements> to it:
+the splitting again, by passing C<\@statements> to it:
 
     my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
     my @results = $batch->do( \@statements ); # This does not perform the splitting again.
 
-B<Warning!> In previous versions, the method C<split_with_placeholders>
+B<Warning!> In previous versions, the C<split_with_placeholders> (public) method
 documented above did not work, so there is the possibility that someone
 used the (private, undocumented) C<_split_with_placeholders> method instead
-(which worked correclty).
+(which worked correctly).
 In this case, please start using the public method (which now works as
 advertised), since the private method will be removed in future versions.
+
+=head1 LIMITATIONS
+
+Please look at: L<< SQL::SplitStatement LIMITATIONS|SQL::SplitStatement/LIMITATIONS >>
 
 =head1 DEPENDENCIES
 
@@ -425,7 +451,7 @@ DBIx::MultiStatementDo depends on the following modules:
 
 =over 4
 
-=item * L<SQL::SplitStatement> 0.05003 or newer
+=item * L<SQL::SplitStatement> 0.10000 or newer
 
 =item * L<Moose>
 
@@ -436,6 +462,8 @@ DBIx::MultiStatementDo depends on the following modules:
 Emanuele Zeppieri, C<< <emazep@cpan.org> >>
 
 =head1 BUGS
+
+No known bugs so far.
 
 Please report any bugs or feature requests to
 C<bug-dbix-MultiStatementDo at rt.cpan.org>, or through the web interface at
@@ -488,7 +516,7 @@ for this module.
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright 2010 Emanuele Zeppieri.
+Copyright 2011 Emanuele Zeppieri.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of either: the GNU General Public License as published

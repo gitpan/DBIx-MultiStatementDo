@@ -1,4 +1,4 @@
-#!perl
+#!/usr/bin/env perl
 
 use strict;
 use warnings;
@@ -8,8 +8,16 @@ use DBIx::MultiStatementDo;
 
 use Test::More tests => 3;
 
-# SQLite valid SQL
-my $sql_code = <<'SQL';
+my $dbh = DBI->connect( 'dbi:SQLite:dbname=:memory:', '', '', {
+    PrintError => 0
+}) or die $DBI::errstr;
+
+my $sql_code;
+my @bind_values;
+my $batch;
+my $cities;
+
+$sql_code = <<'SQL';
 CREATE TABLE state (id, name);
 INSERT INTO  state (id, name) VALUES (?, ?);
 CREATE TABLE city  (id, name, state_id);
@@ -18,13 +26,9 @@ INSERT INTO  city  (id, name, state_id) VALUES (?, ?, ?);
 DROP TABLE state;
 SQL
 
-my @bind_values = (1, 'New York', 1, 'Albany', 1, 2, 'Buffalo', 1);
+@bind_values = (1, 'New York', 1, 'Albany', 1, 2, 'Buffalo', 1);
 
-my $dbh = DBI->connect( 'dbi:SQLite:dbname=:memory:', '', '', {
-    PrintError => 0
-});
-
-my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
+$batch = DBIx::MultiStatementDo->new( dbh => $dbh );
 my @results;
 
 ok (
@@ -33,7 +37,7 @@ ok (
 );
 cmp_ok ( scalar(@results), '==', 6, 'check success' );
 
-my $cities = $dbh->selectall_arrayref(
+$cities = $dbh->selectall_arrayref(
     'SELECT id, name, state_id FROM city ORDER BY id'
 );
 

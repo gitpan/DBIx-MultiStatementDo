@@ -3,33 +3,28 @@ NAME
     with any DBI driver
 
 VERSION
-    Version 0.06001
+    Version 0.10000
 
 SYNOPSIS
         use DBI;
         use DBIx::MultiStatementDo;
 
-        my $sql_code = <<'SQL';
-        CREATE TABLE parent (a, b, c   , d    );
-        CREATE TABLE child (x, y, "w;", "z;z");
-        /* C-style comment; */
-        CREATE TRIGGER "check;delete;parent;" BEFORE DELETE ON parent WHEN
-            EXISTS (SELECT 1 FROM child WHERE old.a = x AND old.b = y)
-        BEGIN
-            SELECT RAISE(ABORT, 'constraint failed;'); -- Inlined SQL comment
-        END;
-        -- Standalone SQL; comment; w/ semicolons;
-        INSERT INTO parent (a, b, c, d) VALUES ('pippo;', 'pluto;', NULL, NULL);
-        SQL
+    my $sql_code = <<'SQL'; CREATE TABLE parent (a, b, c , d ); CREATE TABLE
+    child (x, y, "w;", "z;z"); /* C-style comment; */ CREATE TRIGGER
+    "check;delete;parent;" BEFORE DELETE ON parent WHEN EXISTS (SELECT 1
+    FROM child WHERE old.a = x AND old.b = y) BEGIN SELECT RAISE(ABORT,
+    'constraint failed;'); -- Inlined SQL comment END; -- Standalone SQL;
+    comment; w/ semicolons; INSERT INTO parent (a, b, c, d) VALUES
+    ('pippo;', 'pluto;', NULL, NULL); SQL
 
         my $dbh = DBI->connect( 'dbi:SQLite:dbname=my.db', '', '' );
-
+    
         my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
-
+    
         # Multiple SQL statements in a single call
         my @results = $batch->do( $sql_code )
             or die $batch->dbh->errstr;
-
+    
         print scalar(@results) . ' statements successfully executed!';
         # 4 statements successfully executed!
 
@@ -45,8 +40,9 @@ DESCRIPTION
     used, which uses a more sophisticated logic than a raw "split" on the
     *statement terminator token*, so that it is able to correctly handle the
     presence of said token inside identifiers, values, comments, "BEGIN ...
-    END" blocks (even nested) and procedural code, as (partially)
-    exemplified in the synopsis above.
+    END" blocks (even nested), *dollar-quoted* strings, MySQL custom
+    "DELIMITER"s etc., as (partially) exemplified in the synopsis above.
+    Moreover, it is able to handle procedural code.
 
     Automatic transactions support is offered by default, so that you'll
     have the *all-or-nothing* behaviour you would probably expect; if you
@@ -120,15 +116,15 @@ METHODS
     transactions are enabled), in case one of the atomic statements fails,
     all the other succeeding statements executed so far, if any, are rolled
     back and the method (immediately) returns an empty list (since no
-    statement has been actually committed).
+    statements have actually been committed).
 
     If the "rollback" option is set to a false value (and therefore
     automatic transactions are disabled), the method immediately returns at
     the first failing statement as above, but it does not roll back any
     prior succeeding statement, and therefore a list containing the values
-    returned by the statement executed so far is returned (and these
-    statements are actually committed to the db, if "$dbh->{AutoCommit}" is
-    set).
+    returned by the statements (successfully) executed so far is returned
+    (and these statements are actually committed to the db, if
+    "$dbh->{AutoCommit}" is set).
 
     In scalar context it returns, regardless of the value of the "rollback"
     option, "undef" if any of the atomic statements failed, or a true value
@@ -138,8 +134,8 @@ METHODS
     anything more than setting the "rollback" option to a true value (or
     simply do nothing, as it is the default): DBIx::MultiStatementDo will
     automatically (and temporarily, via "local") set "$dbh->{AutoCommit}"
-    and "$dbh->{RaiseError}" as needed. No other database handle attribute
-    is touched, so that you can for example set "$dbh->{PrintError}" and
+    and "$dbh->{RaiseError}" as needed. No other DBI db handle attribute is
+    ever touched, so that you can for example set "$dbh->{PrintError}" and
     enjoy its effects in case of a failing statement.
 
     If you want to disable the automatic transactions and manage them by
@@ -149,9 +145,9 @@ METHODS
             dbh      => $dbh,
             rollback => 0
         );
-
+    
         my @results;
-
+    
         $batch->dbh->{AutoCommit} = 0;
         $batch->dbh->{RaiseError} = 1;
         eval {
@@ -171,7 +167,7 @@ METHODS
     example:
 
         # 7 statements (SQLite valid SQL)
-        my $sql_code = <<'SQL';
+    my $sql_code = <<'SQL';
         CREATE TABLE state (id, name);
         INSERT INTO  state (id, name) VALUES (?, ?);
         CREATE TABLE city (id, name, state_id);
@@ -179,45 +175,65 @@ METHODS
         INSERT INTO  city (id, name, state_id) VALUES (?, ?, ?);
         DROP TABLE city;
         DROP TABLE state
-        SQL
-
-        # Only 5 elements are required in @bind_values
-        my @bind_values = (
-            undef,
-            [ 1, 'Nevada' ],
-            undef,
+    SQL
+    
+        # Only 5 elements are required in the bind values list
+        my $bind_values = [
+            undef                  , # or []
+            [ 1, 'Nevada' ]        ,
+            []                     , # or undef
             [ 1, 'Las Vegas'  , 1 ],
             [ 2, 'Carson City', 1 ]
-        );
-
+        ];
+    
         my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
-
-        my @results = $batch->do( $sql_code, undef, \@bind_values )
+    
+        my @results = $batch->do( $sql_code, undef, $bind_values )
             or die $batch->dbh->errstr;
 
     If the last statements have no placeholders, the corresponding "undef"s
-    don't need to be present in @bind_values, as shown above. @bind_values
-    can also have more elements than the number of the atomic statements, in
-    which case the excess elements are simply ignored.
+    don't need to be present in the bind values list, as shown above. The
+    bind values list can also have more elements than the number of the
+    atomic statements, in which case the excess elements will simply be
+    ignored.
 
    Bind values as a flat list
     This is a much more powerful feature of "do": when it gets the bind
     values as a flat list, it automatically assigns them to the
-    corresponding placeholders (no *interleaving* "undef"s are necessary).
+    corresponding placeholders (no *interleaving* "undef"s are necessary in
+    this case).
 
     In other words, you can regard the given SQL code as a single big
     statement and pass the bind values exactly as you would do with the
     ordinary DBI "do" method.
 
-    For example, given $sql_code and the bind values of the example above,
-    you could simply do:
+    For example, given $sql_code from the example above, you could simply
+    do:
 
-        my @bind_values = (1, 'Nevada', 1, 'Las Vegas', 1, 2, 'Carson City', 1);
-
+        my @bind_values = ( 1, 'Nevada', 1, 'Las Vegas', 1, 2, 'Carson City', 1 );
+    
         my @results = $batch->do( $sql_code, undef, @bind_values )
             or die $batch->dbh->errstr;
 
     and get exactly the same result.
+
+   Difference between bind values as a list reference and as a flat list
+    If you want to pass the bind values as a flat list as described above,
+    you must pass the first parameter to "do" either as a string (so that
+    the internal splitting is performed) or, if you want to disable the
+    internal splitting, as a reference to the two-elements list containing
+    both the statements and the placeholder numbers listrefs (as described
+    above in do).
+
+    In other words, you can't pass the bind values as a flat list and pass
+    at the same time the (already split) statements without the placeholder
+    numbers listref. To do so, you need to pass the bind values as a list
+    reference instead, otherwise "do" throws an exception.
+
+    To summarize, bind values as a flat list is easier to use but it suffers
+    from this subtle limitation, while bind values as a list reference is a
+    little bit more cumbersome to use, but it has no limitations and can
+    therefore always be used.
 
   "dbh"
     *   "$batch->dbh"
@@ -263,22 +279,25 @@ METHODS
         # Now you can check @statements if you want...
 
     and then you can execute your statements preventing "do" from performing
-    the splitting again, by passing @statements to it:
+    the splitting again, by passing "\@statements" to it:
 
         my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
         my @results = $batch->do( \@statements ); # This does not perform the splitting again.
 
-    Warning! In previous versions, the method "split_with_placeholders"
-    documented above did not work, so there is the possibility that someone
-    used the (private, undocumented) "_split_with_placeholders" method
-    instead (which worked correclty). In this case, please start using the
-    public method (which now works as advertised), since the private method
-    will be removed in future versions.
+    Warning! In previous versions, the "split_with_placeholders" (public)
+    method documented above did not work, so there is the possibility that
+    someone used the (private, undocumented) "_split_with_placeholders"
+    method instead (which worked correctly). In this case, please start
+    using the public method (which now works as advertised), since the
+    private method will be removed in future versions.
+
+LIMITATIONS
+    Please look at: SQL::SplitStatement LIMITATIONS
 
 DEPENDENCIES
     DBIx::MultiStatementDo depends on the following modules:
 
-    *   SQL::SplitStatement 0.05003 or newer
+    *   SQL::SplitStatement 0.10000 or newer
 
     *   Moose
 
@@ -286,6 +305,8 @@ AUTHOR
     Emanuele Zeppieri, "<emazep@cpan.org>"
 
 BUGS
+    No known bugs so far.
+
     Please report any bugs or feature requests to "bug-dbix-MultiStatementDo
     at rt.cpan.org", or through the web interface at
     <http://rt.cpan.org/NoAuth/ReportBug.html?Queue=DBIx-MultiStatementDo>.
@@ -325,7 +346,7 @@ SEE ALSO
     *   DBI
 
 LICENSE AND COPYRIGHT
-    Copyright 2010 Emanuele Zeppieri.
+    Copyright 2011 Emanuele Zeppieri.
 
     This program is free software; you can redistribute it and/or modify it
     under the terms of either: the GNU General Public License as published
