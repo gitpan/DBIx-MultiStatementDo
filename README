@@ -3,7 +3,7 @@ NAME
     with any DBI driver
 
 VERSION
-    Version 0.10000
+    version 0.20000
 
 SYNOPSIS
         use DBI;

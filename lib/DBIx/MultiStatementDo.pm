@@ -1,11 +1,14 @@
+## no critic
 package DBIx::MultiStatementDo;
+BEGIN {
+  $DBIx::MultiStatementDo::VERSION = '0.20000';
+}
+## use critic
 
 use Moose;
 use Carp qw(croak);
 
-use SQL::SplitStatement 0.10000;
-
-our $VERSION = '0.10000';
+use SQL::SplitStatement 0.20000;
 
 has 'dbh' => (
     is       => 'rw',
@@ -118,7 +121,7 @@ DBIx::MultiStatementDo - Multiple SQL statements in a single do() call with any 
 
 =head1 VERSION
 
-Version 0.10000
+version 0.20000
 
 =head1 SYNOPSIS
 

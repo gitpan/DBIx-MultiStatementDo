@@ -12,6 +12,7 @@ my %WriteMakefileArgs = (
   'ABSTRACT' => 'Multiple SQL statements in a single do() call with any DBI driver',
   'AUTHOR' => 'Emanuele Zeppieri <emazep@cpan.org>',
   'BUILD_REQUIRES' => {
+    'DBD::SQLite' => '0',
     'DBI' => '0',
     'English' => '0',
     'File::Find' => '0',
@@ -29,9 +30,9 @@ my %WriteMakefileArgs = (
   'PREREQ_PM' => {
     'Carp' => '0',
     'Moose' => '0',
-    'SQL::SplitStatement' => '0.10000'
+    'SQL::SplitStatement' => '0.20000'
   },
-  'VERSION' => '0.10000',
+  'VERSION' => '0.20000',
   'test' => {
     'TESTS' => 't/*.t'
   }
