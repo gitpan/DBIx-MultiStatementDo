@@ -30,9 +30,9 @@ my %WriteMakefileArgs = (
   'PREREQ_PM' => {
     'Carp' => '0',
     'Moose' => '0',
-    'SQL::SplitStatement' => '0.20000'
+    'SQL::SplitStatement' => '0.30000'
   },
-  'VERSION' => '0.20000',
+  'VERSION' => '0.30000',
   'test' => {
     'TESTS' => 't/*.t'
   }

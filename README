@@ -3,20 +3,26 @@ NAME
     with any DBI driver
 
 VERSION
-    version 0.20000
+    version 0.30000
 
 SYNOPSIS
         use DBI;
         use DBIx::MultiStatementDo;
-
-    my $sql_code = <<'SQL'; CREATE TABLE parent (a, b, c , d ); CREATE TABLE
-    child (x, y, "w;", "z;z"); /* C-style comment; */ CREATE TRIGGER
-    "check;delete;parent;" BEFORE DELETE ON parent WHEN EXISTS (SELECT 1
-    FROM child WHERE old.a = x AND old.b = y) BEGIN SELECT RAISE(ABORT,
-    'constraint failed;'); -- Inlined SQL comment END; -- Standalone SQL;
-    comment; w/ semicolons; INSERT INTO parent (a, b, c, d) VALUES
-    ('pippo;', 'pluto;', NULL, NULL); SQL
-
+    
+        # Multiple SQL statements in a single string
+    my $sql_code = <<'SQL';
+        CREATE TABLE parent (a, b, c   , d    );
+        CREATE TABLE child (x, y, "w;", "z;z");
+        /* C-style comment; */
+        CREATE TRIGGER "check;delete;parent;" BEFORE DELETE ON parent WHEN
+            EXISTS (SELECT 1 FROM child WHERE old.a = x AND old.b = y)
+        BEGIN
+            SELECT RAISE(ABORT, 'constraint failed;'); -- Inlined SQL comment
+        END;
+        -- Standalone SQL; comment; w/ semicolons;
+        INSERT INTO parent (a, b, c, d) VALUES ('pippo;', 'pluto;', NULL, NULL);
+    SQL
+    
         my $dbh = DBI->connect( 'dbi:SQLite:dbname=my.db', '', '' );
     
         my $batch = DBIx::MultiStatementDo->new( dbh => $dbh );
@@ -38,11 +44,12 @@ DESCRIPTION
     the SQL code, splits it into the atomic statements it is composed of and
     executes them one by one. To split the SQL code SQL::SplitStatement is
     used, which uses a more sophisticated logic than a raw "split" on the
-    *statement terminator token*, so that it is able to correctly handle the
-    presence of said token inside identifiers, values, comments, "BEGIN ...
-    END" blocks (even nested), *dollar-quoted* strings, MySQL custom
-    "DELIMITER"s etc., as (partially) exemplified in the synopsis above.
-    Moreover, it is able to handle procedural code.
+    ";" (semicolon) character: first, various different statement terminator
+    *tokens* are recognized, then SQL::SplitStatement is able to correctly
+    handle the presence of said tokens inside identifiers, values, comments,
+    "BEGIN ... END" blocks (even nested), *dollar-quoted* strings, MySQL
+    custom "DELIMITER"s, procedural code etc., as (partially) exemplified in
+    the "SYNOPSIS" above.
 
     Automatic transactions support is offered by default, so that you'll
     have the *all-or-nothing* behaviour you would probably expect; if you
@@ -154,7 +161,9 @@ METHODS
             @results = $batch->do( $sql_string );
             $batch->dbh->commit;
             1
-        } or eval { $batch->dbh->rollback };
+        } or eval {
+            $batch->dbh->rollback
+        };
 
    Bind values as a list reference
     The bind values can be passed as a reference to a list of listrefs, each
@@ -346,7 +355,7 @@ SEE ALSO
     *   DBI
 
 LICENSE AND COPYRIGHT
-    Copyright 2011 Emanuele Zeppieri.
+    Copyright 2010-2011 Emanuele Zeppieri.
 
     This program is free software; you can redistribute it and/or modify it
     under the terms of either: the GNU General Public License as published

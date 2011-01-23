@@ -22,10 +22,10 @@ name: DBIx-MultiStatementDo
 requires:
   Carp: 0
   Moose: 0
-  SQL::SplitStatement: 0.20000
+  SQL::SplitStatement: 0.30000
   perl: 5.006
 resources:
   bugtracker: http://rt.cpan.org/NoAuth/Bugs.html?Dist=DBIx-MultiStatementDo
   homepage: http://search.cpan.org/dist/DBIx-MultiStatementDo
   repository: git://github.com/emazep/DBIx-MultiStatementDo.git
-version: 0.20000
+version: 0.30000

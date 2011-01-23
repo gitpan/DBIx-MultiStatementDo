@@ -1,5 +1,11 @@
 Revision history for DBIx-MultiStatementDo
 
+0.30000       2011-01-23 11:03:12 Europe/Rome
+
+* Minimum SQL::SplitStatement required version bumped to 0.30000
+
+* Minor cosmetic doc fixes.
+
 0.20000       2011-01-21 19:14:03 Europe/Rome
 
 * Missing DBD::SQLite dependence for testing fixed.
