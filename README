@@ -3,14 +3,14 @@ NAME
     with any DBI driver
 
 VERSION
-    version 0.30000
+    version 1.00000
 
 SYNOPSIS
         use DBI;
         use DBIx::MultiStatementDo;
     
         # Multiple SQL statements in a single string
-    my $sql_code = <<'SQL';
+        my $sql_code = <<'SQL';
         CREATE TABLE parent (a, b, c   , d    );
         CREATE TABLE child (x, y, "w;", "z;z");
         /* C-style comment; */
@@ -21,7 +21,7 @@ SYNOPSIS
         END;
         -- Standalone SQL; comment; w/ semicolons;
         INSERT INTO parent (a, b, c, d) VALUES ('pippo;', 'pluto;', NULL, NULL);
-    SQL
+        SQL
     
         my $dbh = DBI->connect( 'dbi:SQLite:dbname=my.db', '', '' );
     
@@ -165,18 +165,18 @@ METHODS
             $batch->dbh->rollback
         };
 
-   Bind values as a list reference
+   Bind Values as a List Reference
     The bind values can be passed as a reference to a list of listrefs, each
     of which contains the bind values for the atomic statement it
     corresponds to. The bind values *inner* lists must match the
     corresponding atomic statements as returned by the internal *splitter
     object*, with "undef" (or empty listref) elements where the
-    corresponding atomic statements have no *placeholders* (also known as or
-    *parameter markers* - represented by the "?" character). Here is an
-    example:
+    corresponding atomic statements have no *placeholders*.
+
+    Here is an example:
 
         # 7 statements (SQLite valid SQL)
-    my $sql_code = <<'SQL';
+        my $sql_code = <<'SQL';
         CREATE TABLE state (id, name);
         INSERT INTO  state (id, name) VALUES (?, ?);
         CREATE TABLE city (id, name, state_id);
@@ -184,7 +184,7 @@ METHODS
         INSERT INTO  city (id, name, state_id) VALUES (?, ?, ?);
         DROP TABLE city;
         DROP TABLE state
-    SQL
+        SQL
     
         # Only 5 elements are required in the bind values list
         my $bind_values = [
@@ -206,7 +206,7 @@ METHODS
     atomic statements, in which case the excess elements will simply be
     ignored.
 
-   Bind values as a flat list
+   Bind Values as a Flat List
     This is a much more powerful feature of "do": when it gets the bind
     values as a flat list, it automatically assigns them to the
     corresponding placeholders (no *interleaving* "undef"s are necessary in
@@ -226,7 +226,7 @@ METHODS
 
     and get exactly the same result.
 
-   Difference between bind values as a list reference and as a flat list
+   Difference between Bind Values as a List Reference and as a Flat List
     If you want to pass the bind values as a flat list as described above,
     you must pass the first parameter to "do" either as a string (so that
     the internal splitting is performed) or, if you want to disable the
@@ -243,6 +243,16 @@ METHODS
     from this subtle limitation, while bind values as a list reference is a
     little bit more cumbersome to use, but it has no limitations and can
     therefore always be used.
+
+   Recognized Placeholders
+    The recognized placeholders are:
+
+    *   *question mark* placeholders, represented by the "?" character;
+
+    *   *dollar sign numbered* placeholders, represented by the "$1, $2,
+        ..., $n" strings;
+
+    *   *named parameters*, such as ":foo", ":bar", ":baz" etc.
 
   "dbh"
     *   "$batch->dbh"

@@ -4,7 +4,7 @@
       "Emanuele Zeppieri <emazep@cpan.org>"
    ],
    "dynamic_config" : 0,
-   "generated_by" : "Dist::Zilla version 4.200001, CPAN::Meta::Converter version 2.102400",
+   "generated_by" : "Dist::Zilla version 4.200003, CPAN::Meta::Converter version 2.110360",
    "license" : [
       "perl_5"
    ],
@@ -23,7 +23,7 @@
          "requires" : {
             "Carp" : 0,
             "Moose" : 0,
-            "SQL::SplitStatement" : "0.30000",
+            "SQL::SplitStatement" : "1.00000",
             "perl" : "5.006"
          }
       },
@@ -52,6 +52,6 @@
          "web" : "http://github.com/emazep/DBIx-MultiStatementDo"
       }
    },
-   "version" : "0.30000"
+   "version" : "1.00000"
 }
 

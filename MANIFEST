@@ -23,7 +23,6 @@ t/release-kwalitee.t
 t/release-no-tabs.t
 t/release-pod-coverage.t
 t/release-pod-syntax.t
-t/release-synopsis.t
 t/release-unused-vars.t
 t/split_hard.t
 t/split_simple.t
