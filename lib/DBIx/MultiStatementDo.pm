@@ -1,14 +1,14 @@
 ## no critic
 package DBIx::MultiStatementDo;
 BEGIN {
-  $DBIx::MultiStatementDo::VERSION = '1.00000';
+  $DBIx::MultiStatementDo::VERSION = '1.00009';
 }
 ## use critic
 
 use Moose;
 use Carp qw(croak);
 
-use SQL::SplitStatement 1.00000;
+use SQL::SplitStatement 1.00009;
 
 has 'dbh' => (
     is       => 'rw',
@@ -123,7 +123,7 @@ DBIx::MultiStatementDo - Multiple SQL statements in a single do() call with any 
 
 =head1 VERSION
 
-version 1.00000
+version 1.00009
 
 =head1 SYNOPSIS
 
@@ -380,18 +380,12 @@ The recognized placeholders are:
 
 =over 4
 
-=item *
+=item * I<question mark> placeholders, represented by the C<?> character;
 
-I<question mark> placeholders, represented by the C<?> character;
-
-=item *
-
-I<dollar sign numbered> placeholders, represented by the
+=item * I<dollar sign numbered> placeholders, represented by the
 C<$1, $2, ..., $n> strings;
 
-=item *
-
-I<named parameters>, such as C<:foo>, C<:bar>, C<:baz> etc.
+=item * I<named parameters>, such as C<:foo>, C<:bar>, C<:baz> etc.
 
 =back
 
